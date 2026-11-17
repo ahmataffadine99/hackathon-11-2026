@@ -22,3 +22,20 @@ Les exercices officiels (`projects/`) ne couvrent qu'un exemple par problème. C
 | `01-fail` | Fonction annotée qui renvoie `DEither.fail()` : affichage d'un `Fail` (`value: undefined`) | P4 (constructeur), P3 (affichage) |
 
 > À noter : `print(-0)` affiche **`-0`** (format `util.inspect`), alors que `DString.to(-0)` renvoie `"0"`. Ce sont deux formatages différents.
+
+## Exercices 02 à 04
+
+| Variante | Ce qu'elle vérifie | Sortie de référence | Responsable |
+|---|---|---|---|
+| `02-callback-user` | `whenIsRight` avec une fonction utilisateur non générique : résultat nu, non ré-enveloppé | `6` | P3 (whenIsRight), P4 (forme `Plain`) |
+| `02-coalescing-array` | `coalescing` sur une valeur déjà tableau : identité | `[ 1, 2 ]` | P2 (coalescing) |
+| `02-left-input` | `whenIsRight` sur un `Fail` : entrée renvoyée telle quelle, callback **jamais** appelé (son `print` ne doit pas apparaître) | l'objet `Fail` seul | P3 |
+| `02-callback-either` | Callback qui renvoie un Either : pas de ré-enveloppe | `Success(1.5)` | P3, P4 (coercition) |
+| `03-pipe-one-step` | `pipe(3, double)` : une étape, fonction utilisateur, valeur nue | `6` | P3 (pipe) |
+| `03-pipe-two-steps` | `pipe(3, double, coalescing)`, puis `pipe(add(1, 2), whenIsRight(double), whenIsRight(coalescing))` : le 2e `whenIsRight` reçoit une valeur **nue** (6), qui **n'est pas un Right**, et la renvoie inchangée | `[ 6 ]` puis `6` | P3, P4 (`IsRight()` faux pour `Plain`) |
+| `03-curried-stored` | `const step = whenIsRight(coalescing)` stocké puis appelé deux fois : la forme curryfiée doit exister comme valeur Go | `[ 3 ]` puis `[ 7 ]` | P3 (ADR-3, limite attendue) |
+| `04-both-branches` | `return` dans le `if` **et** dans le `else`, sans `return` final | l'objet `Fail` | P2 |
+| `04-nested-if` | `return` dans un `if` imbriqué, retour inféré | `Fail` puis `Success(3)` | P2 |
+| `04-unary` | `-x` sur une variable, `!` sur un booléen, `!==` | `Success(-3)`, `Fail`, `Fail` | P2 |
+
+> `pipe(x)` **sans étape** est accepté à l'exécution, mais **refusé par TypeScript** (`Expected 2-16 arguments, but got 1`). Le cas est hors du TypeScript valide et donc hors périmètre : il est remplacé par `03-pipe-one-step`.

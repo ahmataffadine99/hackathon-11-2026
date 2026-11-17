@@ -189,3 +189,39 @@ Les deux lanceurs acceptent exactement les mêmes arguments :
 - **[observé]** Testé sur macOS (Apple Silicon) avec Docker Desktop 28.3.2 : `check-all` (00 ✅ identique), `--check`, `test:types` et `test:lint` au vert.
 - **[à vérifier]** Le lanceur PowerShell n'a **pas** encore été exécuté sur un poste Windows. Un membre sous Windows doit lancer `.\scripts\docker-check.ps1 00` et confirmer `✅ IDENTIQUE [00]`.
 - Les temps d'exécution dans Docker ne sont pas représentatifs pour des mesures de performance de l'hôte (VM).
+
+## 8. Contrôler une PR avant de la merger (règle de merge)
+
+La règle de merge (PLAN §0.2) interdit de merger une PR qui **régresse**, qui contient du **code provisoire** (bouchon, `TEMPORAIRE`, « pas encore branché ») ou dont un **point de contact** entre deux personnes n'est pas branché. `scripts/compare-main.sh` l'outille :
+
+```bash
+./scripts/compare-main.sh sprint2/hotfix-i1          # une branche (locale ou origin/…) contre origin/main
+./scripts/compare-main.sh --patch correctif.patch    # un patch appliqué sur main, avant même la PR
+COMPARE_BASE=<ref> ./scripts/compare-main.sh <ref2>  # une autre base de comparaison
+```
+
+- Les deux côtés sont extraits dans des **copies jetables** (`git worktree` dans un dossier temporaire) : le dossier de travail n'est pas modifié.
+- Les deux côtés utilisent les **mêmes** `scripts/` et `variations/`, ceux du dossier de travail. Les variantes qui ne sont pas encore sur `main` sont donc testées des deux côtés.
+- Pour chaque côté, le script lance `check-all.sh` (00 à 10) puis `check-all.sh --variations`, compare cible par cible (🔴 régression, 🟢 corrigé) et cherche des **marqueurs provisoires** dans les lignes ajoutées sous `src/`.
+- Le rapport Markdown (`out/compare-<nom>.md`) est affiché, **à coller en commentaire de la PR**. Le code de sortie vaut 1 s'il y a une régression ou un marqueur.
+- Deux points restent à vérifier à la main (cases à cocher dans le rapport) : le branchement des points de contact, et `test:types` / `test:lint`.
+- Durée : environ 30 s sur macOS (Apple Silicon).
+
+**[observé]** Rejoué sur la PR #8 du Sprint 1 (`COMPARE_BASE=0818959 ./scripts/compare-main.sh 4624394`), l'outil la **bloque** : il détecte le commentaire « Pas encore branché » du handler `isRight`. Appliqué au correctif I1 (`--patch`), il donne **1 → 6 cibles identiques, 0 régression**.
+
+## 9. État au 17/11 après le Sprint 1
+
+`main` `4624394` (✅ = sortie identique à TypeScript) **[observé]** :
+
+| Cible | `main` | `main` + I1 |
+|---|---|---|
+| 00 | ✅ | ✅ |
+| 01 | 💥 `isRight` non branché (D10) | ✅ |
+| 02, 03 | 💥 `isRight` non branché | 💥 `whenIsRight` / `pipe` (Sprint 2) |
+| 04 | 💥 `-1` | 💥 `-1` (Sprint 2) |
+| 05 à 10 | 💥 | 💥 |
+| Variantes 01 (9) | 0/9 | 4/9 (les 5 autres : types chaîne, D12) |
+| Variantes 02 à 04 (10) | 0/10 | 1/10 (`04-nested-if`) |
+
+Le détail par cible se trouve dans les fiches [01](exercises/01.md), [02](exercises/02.md), [03](exercises/03.md) et [04](exercises/04.md).
+
