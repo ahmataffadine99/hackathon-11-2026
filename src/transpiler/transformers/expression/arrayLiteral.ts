@@ -21,11 +21,18 @@ export const arrayLiteralTransformer: Transformer<GoAST.SliceLiteral> = createTr
 			}
 		}
 
-		const expressionType = await context.transpilation.typeChecker.getTypeAtLocation(node);
-		const type = await DCommon.asyncPipe(
-			goTypeOf(expressionType, node, context),
-			DEither.unwrapRight,
-		);
+		// Type ATTENDU d'abord (`const empty: number[] = []` : le littéral seul est
+		// `never[]`), sinon le type propre du littéral.
+		const { typeChecker } = context.transpilation;
+		const contextualType = await typeChecker.getContextualType(node);
+		const contextualGoType = contextualType && DEither.unwrapRight(await goTypeOf(contextualType, node, context));
+		const type = contextualGoType && !DEither.isLeft(contextualGoType)
+			&& DModeling.hasTagValue(contextualGoType.result, "[node][type]slice")
+			? contextualGoType
+			: await DCommon.asyncPipe(
+				goTypeOf(await typeChecker.getTypeAtLocation(node), node, context),
+				DEither.unwrapRight,
+			);
 
 		if (DEither.isLeft(type)) {
 			return type;

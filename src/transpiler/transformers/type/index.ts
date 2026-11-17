@@ -8,6 +8,7 @@ import { numberLiteralTypeTransformer } from "./numberLiteral";
 import { parenthesizedTypeTransformer } from "./parenthesized";
 import { unionTypeTransformer } from "./union";
 import { intersectionTypeTransformer } from "./intersection";
+import { functionTypeTransformer } from "./function";
 import { stringTypeTransformer } from "./string";
 import { booleanTypeTransformer } from "./boolean";
 import { arrayTypeTransformer } from "./array";
@@ -30,5 +31,6 @@ export const typeTransformers = DCommon.memo(
 		booleanTypeTransformer,
 		arrayTypeTransformer,
 		homogeneousTupleTypeTransformer,
+		functionTypeTransformer,
 	],
 );
