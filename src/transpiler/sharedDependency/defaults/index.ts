@@ -5,12 +5,12 @@ import { inspectSharedDependency } from "./inspect";
 
 export { nullShardDependency, undefinedShardDependency, inspectSharedDependency };
 
-// inspectSharedDependency vit dans defaults/ par organisation (c'est la
-// dépendance par défaut de formatage, au même titre que null/undefined), et
-// est désormais incluse ci-dessous comme elles : `build.ts` fusionne défauts
-// et dépendances enregistrées par ensemble (identité des objets memoïsés),
-// donc un enregistrement explicite (print, either) ne la déclare plus deux
-// fois (I1, D11/C10).
+// Dépendances toujours émises dans shard_dependencies.go. inspect en fait partie :
+// InspectEntry est utilisé à la fois par Print (formateur) et par la méthode
+// InspectEntries de Either, qui peut exister sans aucun appel à print (ex. 00).
+// build.ts fusionne cette liste et les dépendances enregistrées par ensemble :
+// une dépendance aussi enregistrée via context.registerSharedDependency
+// (handler print) n'est donc émise qu'une seule fois.
 export const defaultSharedDependencies = DCommon.memo(() => [
 	nullShardDependency.value,
 	undefinedShardDependency.value,

@@ -4,6 +4,10 @@ import type { GoAST } from "@go";
 import { duploJSExpressionTransformers } from "../duplojs";
 import { identifierTransformer } from "../common";
 import { numericLiteralTransformer } from "./numericLiteral";
+import { stringLiteralTransformer } from "./stringLiteral";
+import { booleanLiteralTransformer } from "./booleanLiteral";
+import { arrayLiteralTransformer } from "./arrayLiteral";
+import { prefixUnaryExpressionTransformer } from "./prefixUnary";
 import { sharedExpressionTransformers } from "../shared";
 import { binaryExpressionTransformer } from "./binary";
 
@@ -13,6 +17,10 @@ export const expressionTransformers = DCommon.memo(
 		...sharedExpressionTransformers.value,
 		identifierTransformer,
 		numericLiteralTransformer,
+		stringLiteralTransformer,
+		booleanLiteralTransformer,
+		arrayLiteralTransformer,
+		prefixUnaryExpressionTransformer,
 		binaryExpressionTransformer,
 	],
 );
