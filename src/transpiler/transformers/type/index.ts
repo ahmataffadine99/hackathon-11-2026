@@ -7,6 +7,8 @@ import { float64TypeTransformer } from "./float";
 import { numberLiteralTypeTransformer } from "./numberLiteral";
 import { parenthesizedTypeTransformer } from "./parenthesized";
 import { unionTypeTransformer } from "./union";
+import { intersectionTypeTransformer } from "./intersection";
+import { functionTypeTransformer } from "./function";
 import { stringTypeTransformer } from "./string";
 import { booleanTypeTransformer } from "./boolean";
 import { arrayTypeTransformer } from "./array";
@@ -18,6 +20,7 @@ export * from "./goTypeOf";
 export const typeTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Type | GoAST.TypeReference>[] => [
 		unionTypeTransformer,
+		intersectionTypeTransformer,
 		...duploJSTypeTransformers.value,
 		...sharedTypeTransformers.value,
 		parenthesizedTypeTransformer,
@@ -28,5 +31,6 @@ export const typeTransformers = DCommon.memo(
 		booleanTypeTransformer,
 		arrayTypeTransformer,
 		homogeneousTupleTypeTransformer,
+		functionTypeTransformer,
 	],
 );

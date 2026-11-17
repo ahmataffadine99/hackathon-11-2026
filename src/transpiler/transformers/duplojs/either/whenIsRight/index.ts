@@ -1,159 +1,196 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import * as DModeling from "@duplojs/lang/modeling";
-import { type Transformer, type TransformationSuccess, type TransformationError, type NotfoundTransformer } from "@transformer";
+import { type Transformer } from "@transformer";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
-import { SignatureKind, type Type } from "typescript/async";
 import { type BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
-import { typeTransformers } from "../../../type";
-import { createFunctionValue, resolveExpectedFunctionSignature } from "../../application";
-import { eitherTypeIdentifier } from "../sharedDependency";
+import { goTypeOf, goTypeOfExpression, type GoType } from "../../../type/goTypeOf";
+import {
+	callbackApplication,
+	createFunctionValue,
+	resolveCallback,
+	resolveExpectedSignature,
+	type Callback,
+	type CallbackApplication,
+	type CallbackApplicationResult,
+	type TypedExpression,
+} from "../../application";
+import { coerceGoExpression, eitherVariantNames } from "../coerce";
+import { createEitherGoType, getEitherValueGoType, unionGoTypes } from "../goType";
+import { eitherDependency } from "../sharedDependency";
 
-// DEither.whenIsRight(e, f) / whenIsRight(f) : inlinée dans les deux formes
-// (ADR-3, PLAN_HACKATHON.md §0.5). La forme directe évalue e puis f, dans
-// l'ordre ; la forme curryfiée délègue la construction du func literal à
-// createFunctionValue (./application.ts) et réutilise le même corps inliné.
+// DEither.whenIsRight(e, f) / whenIsRight(f) et DEither.whenIsRightOtherwise(e, f, g) /
+// whenIsRightOtherwise(f, g) (ADR-3, ADR-7) : inlinés dans les deux formes.
+//   var r T
+//   if e.IsRight() { r = coerce(f(e.Value)) } else { r = coerce(e) }        // whenIsRight
+//   if e.IsRight() { r = coerce(f(e.Value)) } else { r = coerce(g(e)) }     // …Otherwise
+// La forme directe évalue e, puis f (et g), dans l'ordre JS. La forme curryfiée
+// évalue f (et g) à sa création, puis construit un func literal (createFunctionValue).
+// Un callback n'est évalué que dans sa branche.
 
 const isRightMethodIdentifier = GoAST.createIdentifier("IsRight");
 const valueFieldIdentifier = GoAST.createIdentifier("Value");
 
-// Bouchon LOCAL en attendant goTypeOf (P4) : même recette que application.ts
-// (typeToTypeNode puis typeTransformers.value), à retirer à son merge.
-async function localGoTypeOf(
-	type: Type,
-	site: TsAST.Node,
-	context: BuildContext,
-) {
-	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, site);
+type Kind = "whenIsRight" | "whenIsRightOtherwise";
 
-	if (!typeNode) {
-		return context.error(site, "unable-to-create-type-node-for-whenisright");
-	}
-
-	return context.transform(typeNode, typeTransformers.value);
-}
-
-async function resolveCallbackReturnType(
-	callbackNode: TsAST.Node,
-	context: BuildContext,
-): Promise<Type | undefined> {
-	const { typeChecker } = context.transpilation;
-	const callbackType = await typeChecker.getTypeAtLocation(callbackNode);
-	const signatures = await typeChecker.getSignaturesOfType(callbackType, SignatureKind.Call);
-
-	const signature = DArray.first(signatures);
-
-	return signature && typeChecker.getReturnTypeOfSignature(signature);
-}
-
-function extractEitherValueGoType(type: GoAST.Type | GoAST.TypeReference) {
-	if (
-		DModeling.hasTagValue(type, "[node]type-reference-generic")
-		&& DModeling.hasTagValue(type.typeReference, "[node]type-reference-package")
-		&& type.typeReference.identifier === eitherTypeIdentifier
-	) {
-		return DArray.first(type.typeArguments);
-	}
-
-	return undefined;
-}
-
-// Bouchon LOCAL en attendant coerceExpression (P4, ADR-2) : ne couvre que
-// l'identité (les deux côtés rendent le même Either[V]), seul cas qui ne
-// dépend pas de EitherPlainOf/EitherRetype (pas encore implémentés). Toute
-// union hétérogène (ex. 02, 03 : `Fail | readonly [number]`) reste donc
-// documentée comme une limite de ce patch, pas silencieusement approximée.
-async function coerceToResultType(params: {
-	expression: GoAST.Expression;
-	from: Type;
-	to: GoAST.Type | GoAST.TypeReference;
+async function assignBranch(params: {
+	application: CallbackApplication;
+	resultIdentifier: GoAST.Identifier;
+	resultGoType: GoType;
 	site: TsAST.Node;
 	context: BuildContext;
-}): Promise<TransformationSuccess<GoAST.Expression> | TransformationError | NotfoundTransformer> {
-	const { expression, from, to, site, context } = params;
-
-	const fromGoType = await DCommon.asyncPipe(
-		localGoTypeOf(from, site, context),
-		DEither.unwrapRight,
+}) {
+	const { application, resultIdentifier, resultGoType, site, context } = params;
+	const coerced = DEither.unwrapRight(
+		await coerceGoExpression(
+			{
+				expression: application.expression,
+				fromGoType: application.goType,
+				toGoType: resultGoType,
+				from: application.type,
+			},
+			context,
+		),
 	);
 
-	if (DEither.isLeft(fromGoType)) {
-		return fromGoType;
+	if (DEither.isLeft(coerced)) {
+		return context.error(site, "duplojs-either-whenisright-unsupported-coercion");
 	}
 
-	if (!DArray.lengthEqual(fromGoType.before, 0)) {
-		return context.error(site, "unsupported-before-on-whenisright-coercion");
-	}
-
-	const fromValue = extractEitherValueGoType(fromGoType.result);
-	const toValue = extractEitherValueGoType(to);
-
-	if (fromValue && toValue && fromValue === toValue) {
-		return context.success({ result: expression });
-	}
-
-	return context.error(site, "duplojs-either-whenisright-heterogeneous-union-not-supported");
+	return DEither.right(
+		"branch",
+		GoAST.createBlockStatement({
+			statements: [
+				...application.before,
+				GoAST.createAssignmentStatement({
+					targets: DCommon.cast([resultIdentifier]),
+					values: DCommon.cast([coerced.result]),
+				}),
+			],
+		}),
+	);
 }
 
+/**
+ * Corps commun aux quatre formes. `input` est déjà lié à un identifiant (lu
+ * plusieurs fois : IsRight, Value, branche gauche). `resultGoType` : type Go du
+ * résultat s'il est connu par TypeScript ; sinon il est déduit des deux branches.
+ */
 async function buildBranches(params: {
-	eitherIdentifier: GoAST.Expression;
-	eitherType: Type;
-	callbackExpression: GoAST.Expression;
-	callbackReturnType: Type;
-	resultGoType: GoAST.Type | GoAST.TypeReference;
+	input: TypedExpression;
+	onRight: Callback;
+	onOther: Callback | undefined;
+	resultGoType: GoType | undefined;
 	site: TsAST.Node;
 	context: BuildContext;
-}): Promise<TransformationSuccess<GoAST.Expression> | TransformationError | NotfoundTransformer> {
-	const {
-		eitherIdentifier, eitherType, callbackExpression, callbackReturnType, resultGoType, site, context,
-	} = params;
+}): Promise<CallbackApplicationResult> {
+	const { input, onRight, onOther, site, context } = params;
 
-	const rightValue = GoAST.createCallExpression({
-		callee: callbackExpression,
-		arguments: [
-			GoAST.createSelectorExpression({
-				target: eitherIdentifier,
-				identifier: valueFieldIdentifier,
-			}),
-		],
+	const valueGoType = DEither.unwrapRight(getEitherValueGoType(input.goType));
+
+	if (DEither.isLeft(valueGoType)) {
+		return context.error(site, "duplojs-either-whenisright-input-is-not-an-either");
+	}
+
+	const inputVariants = input.type ? await eitherVariantNames(input.type, context) : undefined;
+	// Aucune variante Right dans le type de l'entrée (ex. `Fail | number`, après un
+	// premier whenIsRight) : la branche Right est impossible, TypeScript n'inclut pas
+	// le callback dans le type du résultat ; on ne la génère pas.
+	const rightIsPossible = !inputVariants
+		|| DArray.some(inputVariants, (name) => name === "Success" || name === "Right");
+
+	const rightApplication = rightIsPossible
+		? DEither.unwrapRight(
+			await onRight.apply([
+				{
+					expression: GoAST.createSelectorExpression({
+						target: input.expression,
+						identifier: valueFieldIdentifier,
+					}),
+					goType: valueGoType,
+				},
+			]),
+		)
+		: undefined;
+
+	if (rightApplication && DEither.isLeft(rightApplication)) {
+		return rightApplication;
+	}
+
+	const otherApplication = onOther
+		? DEither.unwrapRight(await onOther.apply([input]))
+		: {
+			before: [],
+			...input,
+		};
+
+	if (DEither.isLeft(otherApplication)) {
+		return otherApplication;
+	}
+
+	const resultGoType = params.resultGoType ?? inferResultGoType({
+		rightGoType: rightApplication?.goType,
+		otherGoType: otherApplication.goType,
+		// Branche gauche de whenIsRight : l'entrée privée de ses Right. Si ses
+		// gauches ne portent pas de valeur, seule la valeur du callback compte.
+		leftsAreValueless: !onOther && inputVariants !== undefined && DArray.every(
+			inputVariants,
+			(name) => name !== "Left",
+		),
+		packageName: context.registerSharedDependency(eitherDependency.value),
 	});
 
-	const coercedRight = await DCommon.asyncPipe(
-		coerceToResultType({
-			expression: rightValue,
-			from: callbackReturnType,
-			to: resultGoType,
-			site,
-			context,
-		}),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(coercedRight)) {
-		return coercedRight;
-	}
-
-	const coercedLeft = await DCommon.asyncPipe(
-		coerceToResultType({
-			expression: eitherIdentifier,
-			from: eitherType,
-			to: resultGoType,
-			site,
-			context,
-		}),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(coercedLeft)) {
-		return coercedLeft;
+	if (!resultGoType) {
+		return context.error(site, "duplojs-either-whenisright-unsupported-result-type");
 	}
 
 	const resultIdentifier = context.generateIdentifier();
 
-	return context.success({
+	const elseBranch = DEither.unwrapRight(
+		await assignBranch({
+			application: otherApplication,
+			resultIdentifier,
+			resultGoType,
+			site,
+			context,
+		}),
+	);
+
+	if (DEither.isLeft(elseBranch)) {
+		return elseBranch;
+	}
+
+	if (!rightApplication) {
+		return callbackApplication({
+			before: [
+				GoAST.createVariableDeclarationZeroValue({
+					identifier: resultIdentifier,
+					typeReference: resultGoType,
+				}),
+				...elseBranch.statements,
+			],
+			expression: resultIdentifier,
+			goType: resultGoType,
+		});
+	}
+
+	const rightBranch = DEither.unwrapRight(
+		await assignBranch({
+			application: rightApplication,
+			resultIdentifier,
+			resultGoType,
+			site,
+			context,
+		}),
+	);
+
+	if (DEither.isLeft(rightBranch)) {
+		return rightBranch;
+	}
+
+	return callbackApplication({
 		before: [
 			GoAST.createVariableDeclarationZeroValue({
 				identifier: resultIdentifier,
@@ -162,105 +199,129 @@ async function buildBranches(params: {
 			GoAST.createIfStatement({
 				condition: GoAST.createCallExpression({
 					callee: GoAST.createSelectorExpression({
-						target: eitherIdentifier,
+						target: input.expression,
 						identifier: isRightMethodIdentifier,
 					}),
 					arguments: [],
 				}),
-				body: GoAST.createBlockStatement({
-					statements: [
-						...coercedRight.before,
-						GoAST.createAssignmentStatement({
-							targets: DCommon.cast([resultIdentifier]),
-							values: DCommon.cast([coercedRight.result]),
-						}),
-					],
-				}),
-				elseBranch: GoAST.createBlockStatement({
-					statements: [
-						...coercedLeft.before,
-						GoAST.createAssignmentStatement({
-							targets: DCommon.cast([resultIdentifier]),
-							values: DCommon.cast([coercedLeft.result]),
-						}),
-					],
-				}),
+				body: rightBranch,
+				elseBranch,
 			}),
 		],
-		result: resultIdentifier,
+		expression: resultIdentifier,
+		goType: resultGoType,
 	});
 }
 
-async function directWhenIsRightHandler(
+// Type Go du résultat quand TypeScript ne le donne pas (fonction générique en valeur).
+function inferResultGoType(params: {
+	rightGoType: GoType | undefined;
+	otherGoType: GoType;
+	leftsAreValueless: boolean;
+	packageName: GoAST.Identifier;
+}) {
+	const { rightGoType, otherGoType, leftsAreValueless, packageName } = params;
+
+	if (!rightGoType) {
+		return otherGoType;
+	}
+
+	if (leftsAreValueless) {
+		return DEither.isLeft(getEitherValueGoType(rightGoType))
+			? createEitherGoType(packageName, rightGoType)
+			: rightGoType;
+	}
+
+	return unionGoTypes(rightGoType, otherGoType, packageName);
+}
+
+async function resolveCallbacks(
+	nodes: readonly TsAST.Expression[],
+	context: BuildContext,
+) {
+	const [onRightNode, onOtherNode] = nodes;
+
+	if (!onRightNode) {
+		return undefined;
+	}
+
+	const onRight = DEither.unwrapRight(await resolveCallback(onRightNode, context));
+
+	if (DEither.isLeft(onRight)) {
+		return onRight;
+	}
+
+	if (!onOtherNode) {
+		return DEither.right("callbacks", {
+			onRight,
+			onOther: undefined,
+		});
+	}
+
+	const onOther = DEither.unwrapRight(await resolveCallback(onOtherNode, context));
+
+	if (DEither.isLeft(onOther)) {
+		return onOther;
+	}
+
+	return DEither.right("callbacks", {
+		onRight,
+		onOther,
+	});
+}
+
+async function directHandler(
 	node: TsAST.CallExpression,
+	kind: Kind,
 	context: BuildContext,
 ): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
-	const eitherArgumentNode = DArray.first(node.arguments);
-	const callbackArgumentNode = DArray.first(DArray.shift(node.arguments));
+	const [inputNode, ...callbackNodes] = node.arguments;
 
-	if (!eitherArgumentNode || !callbackArgumentNode) {
-		return context.error(node, "missing-whenisright-arguments");
+	if (!inputNode) {
+		return context.error(node, `missing-${kind}-input`);
 	}
 
-	// Ordre d'évaluation JS : e puis f (avant le if, avant tout appel).
-	const eitherResult = await DCommon.asyncPipe(
-		context.transform(eitherArgumentNode, expressionTransformers.value),
-		DEither.unwrapRight,
-	);
+	// Ordre d'évaluation JS : e, puis les callbacks.
+	const input = DEither.unwrapRight(await context.transform(inputNode, expressionTransformers.value));
 
-	if (DEither.isLeft(eitherResult)) {
-		return eitherResult;
+	if (DEither.isLeft(input)) {
+		return input;
 	}
 
-	const callbackResult = await DCommon.asyncPipe(
-		context.transform(callbackArgumentNode, expressionTransformers.value),
-		DEither.unwrapRight,
-	);
+	const inputGoType = DEither.unwrapRight(await goTypeOfExpression(inputNode, context));
 
-	if (DEither.isLeft(callbackResult)) {
-		return callbackResult;
+	if (DEither.isLeft(inputGoType)) {
+		return inputGoType;
+	}
+
+	const callbacks = DEither.unwrapRight(await resolveCallbacks(callbackNodes, context) ?? context.error(node));
+
+	if (DEither.isLeft(callbacks)) {
+		return callbacks;
 	}
 
 	const { typeChecker } = context.transpilation;
+	const resultGoType = DEither.unwrapRight(await goTypeOf(await typeChecker.getTypeAtLocation(node), node, context));
 
-	const callbackReturnType = await resolveCallbackReturnType(callbackArgumentNode, context);
-
-	if (!callbackReturnType) {
-		return context.error(callbackArgumentNode, "unable-to-resolve-whenisright-callback-return-type");
-	}
-
-	const resultGoType = await DCommon.asyncPipe(
-		localGoTypeOf(await typeChecker.getTypeAtLocation(node), node, context),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(resultGoType)) {
-		return resultGoType;
-	}
-
-	if (!DArray.lengthEqual(resultGoType.before, 0)) {
-		return context.error(node, "unsupported-before-on-whenisright-result-type");
-	}
-
-	// e est lu 3 fois (IsRight, Value, branche gauche) : une seule évaluation,
-	// comme pour isRight/isLeft (../isRight/index.ts).
-	const eitherIdentifier = context.generateIdentifier();
-	const eitherBinding = GoAST.createShortVariableDeclarationStatement({
-		identifier: eitherIdentifier,
-		initializer: eitherResult.result,
+	// e est lu plusieurs fois : une seule évaluation, liée à un identifiant.
+	const inputBinding = GoAST.createShortVariableDeclarationStatement({
+		identifier: context.generateIdentifier(),
+		initializer: input.result,
 	});
 
-	const branches = await DCommon.asyncPipe(
-		buildBranches({
-			eitherIdentifier,
-			eitherType: await typeChecker.getTypeAtLocation(eitherArgumentNode),
-			callbackExpression: callbackResult.result,
-			callbackReturnType,
-			resultGoType: resultGoType.result,
+	const branches = DEither.unwrapRight(
+		await buildBranches({
+			input: {
+				expression: inputBinding.identifier,
+				goType: inputGoType.result,
+				type: await typeChecker.getTypeAtLocation(inputNode),
+			},
+			onRight: callbacks.onRight,
+			onOther: callbacks.onOther,
+			resultGoType: DEither.isLeft(resultGoType) ? undefined : resultGoType.result,
 			site: node,
 			context,
 		}),
-		DEither.unwrapRight,
 	);
 
 	if (DEither.isLeft(branches)) {
@@ -269,105 +330,79 @@ async function directWhenIsRightHandler(
 
 	return context.success({
 		before: [
-			...eitherResult.before,
-			eitherBinding,
-			...callbackResult.before,
+			...input.before,
+			inputBinding,
+			...callbacks.onRight.before,
+			...callbacks.onOther?.before ?? [],
 			...branches.before,
 		],
-		result: branches.result,
+		result: branches.expression,
 	});
 }
 
-async function curriedWhenIsRightHandler(
+async function curriedHandler(
 	node: TsAST.CallExpression,
 	context: BuildContext,
 ): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
-	const callbackArgumentNode = DArray.first(node.arguments);
+	const callbacks = DEither.unwrapRight(await resolveCallbacks(node.arguments, context) ?? context.error(node));
 
-	if (!callbackArgumentNode) {
-		return context.error(node, "missing-whenisright-callback");
+	if (DEither.isLeft(callbacks)) {
+		return callbacks;
 	}
 
-	const callbackResult = await DCommon.asyncPipe(
-		context.transform(callbackArgumentNode, expressionTransformers.value),
-		DEither.unwrapRight,
+	const signature = await resolveExpectedSignature(node, context);
+
+	const functionValue = DEither.unwrapRight(
+		await createFunctionValue({
+			site: node,
+			context,
+			body: async(parameters) => {
+				const input = DArray.first(parameters);
+
+				return input
+					? buildBranches({
+						input,
+						onRight: callbacks.onRight,
+						onOther: callbacks.onOther,
+						resultGoType: signature?.returnGoType,
+						site: node,
+						context,
+					})
+					: context.error(node, "missing-curried-input-parameter");
+			},
+		}),
 	);
 
-	if (DEither.isLeft(callbackResult)) {
-		return callbackResult;
+	if (DEither.isLeft(functionValue)) {
+		return functionValue;
 	}
 
-	if (!DArray.lengthEqual(callbackResult.before, 0)) {
-		return context.error(callbackArgumentNode, "unsupported-before-on-whenisright-callback");
-	}
-
-	const callbackReturnType = await resolveCallbackReturnType(callbackArgumentNode, context);
-
-	if (!callbackReturnType) {
-		return context.error(callbackArgumentNode, "unable-to-resolve-whenisright-callback-return-type");
-	}
-
-	const expectedSignature = await resolveExpectedFunctionSignature(node, context);
-
-	if (!expectedSignature) {
-		return context.notSupport();
-	}
-
-	const { typeChecker } = context.transpilation;
-	const eitherType = await typeChecker.getParameterType(expectedSignature, 0);
-
-	return createFunctionValue({
-		site: node,
-		context,
-		body: async(parameters) => {
-			const eitherIdentifier = DArray.first(parameters);
-
-			if (!eitherIdentifier) {
-				return context.error(node, "missing-whenisright-function-value-parameter");
-			}
-
-			const returnType = await typeChecker.getReturnTypeOfSignature(expectedSignature);
-			const resultGoType = await DCommon.asyncPipe(
-				localGoTypeOf(returnType, node, context),
-				DEither.unwrapRight,
-			);
-
-			if (DEither.isLeft(resultGoType)) {
-				return resultGoType;
-			}
-
-			if (!DArray.lengthEqual(resultGoType.before, 0)) {
-				return context.error(node, "unsupported-before-on-whenisright-result-type");
-			}
-
-			return buildBranches({
-				eitherIdentifier,
-				eitherType,
-				callbackExpression: callbackResult.result,
-				callbackReturnType,
-				resultGoType: resultGoType.result,
-				site: node,
-				context,
-			});
-		},
+	return context.success({
+		before: [...callbacks.onRight.before, ...callbacks.onOther?.before ?? []],
+		result: functionValue.result,
 	});
 }
 
-export async function whenIsRightExpressionHandler(
-	node: TsAST.Node,
-	context: BuildContext,
-): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
-	if (!TsAST.isCallExpression(node)) {
-		return context.notSupport();
-	}
+function createHandler(kind: Kind, directArity: number) {
+	return async(
+		node: TsAST.Node,
+		context: BuildContext,
+	): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> => {
+		if (!TsAST.isCallExpression(node)) {
+			return context.error(node, `duplojs-either-${kind}-as-value-not-supported`);
+		}
 
-	if (DArray.lengthEqual(node.arguments, 2)) {
-		return directWhenIsRightHandler(node, context);
-	}
+		if (DArray.lengthEqual(node.arguments, directArity)) {
+			return directHandler(node, kind, context);
+		}
 
-	if (DArray.lengthEqual(node.arguments, 1)) {
-		return curriedWhenIsRightHandler(node, context);
-	}
+		if (DArray.lengthEqual(node.arguments, directArity - 1)) {
+			return curriedHandler(node, context);
+		}
 
-	return context.error(node, "duplojs-either-whenisright-one-or-two-arguments-only");
+		return context.error(node, `duplojs-either-${kind}-unexpected-arity`);
+	};
 }
+
+export const whenIsRightExpressionHandler = createHandler("whenIsRight", 2);
+export const whenIsRightOtherwiseExpressionHandler = createHandler("whenIsRightOtherwise", 3);

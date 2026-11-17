@@ -4,6 +4,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { expressionTransformers } from ".";
+import { jsNegativeZeroFunctionIdentifier, numberSharedDependency } from "../../sharedDependency/defaults/number";
 
 const unaryOperators: Partial<
 	Record<TsAST.SyntaxKind, GoAST.UnaryOperator>
@@ -23,6 +24,25 @@ export const prefixUnaryExpressionTransformer: Transformer<GoAST.Expression> = c
 
 		if (!operator) {
 			return context.notSupport();
+		}
+
+		// `-0` littéral : une constante Go ne peut pas valoir -0 (elle vaudrait +0).
+		if (
+			operator === "-"
+			&& TsAST.isNumericLiteral(node.operand)
+			&& Number(node.operand.text) === 0
+		) {
+			const packageName = context.registerSharedDependency(numberSharedDependency.value);
+
+			return context.success({
+				result: GoAST.createCallExpression({
+					callee: GoAST.createSelectorExpression({
+						target: packageName,
+						identifier: jsNegativeZeroFunctionIdentifier,
+					}),
+					arguments: [],
+				}),
+			});
 		}
 
 		if (

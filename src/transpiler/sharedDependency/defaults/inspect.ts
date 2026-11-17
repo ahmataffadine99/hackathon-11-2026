@@ -903,9 +903,27 @@ export const inspectSharedDependency = DCommon.memo(() => {
 							types: DCommon.cast([jsUndefinedType]),
 							statements: [GoAST.createReturnStatement({ values: [GoAST.createStringLiteral({ value: "undefined" })] })],
 						}),
+						// ADR-6 amendé (D19) : Print suit util.inspect, qui affiche `-0` ;
+						// JSNumberToString suit String(n), qui donne "0" (DString.to).
 						GoAST.createTypeSwitchCase({
 							types: DCommon.cast([GoAST.builtinTypeReferences.float64]),
-							statements: returnCallStatements(jsNumberToStringFunctionIdentifier, [typedBinding]),
+							statements: [
+								GoAST.createIfStatement({
+									condition: GoAST.createBinaryExpression({
+										operator: "&&",
+										left: GoAST.createBinaryExpression({
+											operator: "==",
+											left: typedBinding,
+											right: GoAST.createIntegerLiteral({ value: 0n }),
+										}),
+										right: packageCall(mathIdentifier, "Signbit", [typedBinding]),
+									}),
+									body: GoAST.createBlockStatement({
+										statements: [GoAST.createReturnStatement({ values: [GoAST.createStringLiteral({ value: "-0" })] })],
+									}),
+								}),
+								...returnCallStatements(jsNumberToStringFunctionIdentifier, [typedBinding]),
+							],
 						}),
 						GoAST.createTypeSwitchCase({
 							types: DCommon.cast([GoAST.builtinTypeReferences.string]),
