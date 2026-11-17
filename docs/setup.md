@@ -209,6 +209,21 @@ COMPARE_BASE=<ref> ./scripts/compare-main.sh <ref2>  # une autre base de compara
 
 **[observé]** Rejoué sur la PR #8 du Sprint 1 (`COMPARE_BASE=0818959 ./scripts/compare-main.sh 4624394`), l'outil la **bloque** : il détecte le commentaire « Pas encore branché » du handler `isRight`. Appliqué au correctif I1 (`--patch`), il donne **1 → 6 cibles identiques, 0 régression**.
 
+## 8 bis. Produire l'archive ZIP de remise
+
+L'archive remise à la soutenance doit être **identique à la PR** vers `duplojs/hackathon-11-2026` (PLAN §12). On la produit depuis la branche de la PR, après le dernier commit :
+
+```bash
+./scripts/make-zip.sh          # archive du commit HEAD
+./scripts/make-zip.sh <ref>    # archive d'un autre commit (tête de la PR)
+```
+
+- L'archive est créée par `git archive` : elle contient **uniquement les fichiers versionnés** du commit, donc ni `dist/`, ni `out/`, ni `node_modules/`. Le script le vérifie après coup.
+- Le script **refuse** de s'exécuter si des fichiers suivis ont des modifications non commitées.
+- Il affiche le hash du commit et l'empreinte SHA-256 de l'archive (`out/hackathon-11-2026-<hash>.zip`). Le hash doit être celui de la tête de la PR au moment de la remise.
+
+**[observé]** Sur `11a8429` : 492 fichiers, aucun artefact de build. Le refus a été testé sur un arbre modifié (code de sortie 1).
+
 ## 9. État au 17/11 après le Sprint 1
 
 `main` `4624394` (✅ = sortie identique à TypeScript) **[observé]** :
