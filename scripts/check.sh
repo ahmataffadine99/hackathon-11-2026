@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Vérifie un exercice : référence TS → transpilation → go vet → go run → diff.
+# Vérifie un exercice ou une variante : référence TS → transpilation → go vet → go run → diff.
 #
-# Usage : ./scripts/check.sh <XX>      (ex. ./scripts/check.sh 00)
+# Usage : ./scripts/check.sh <XX>                  exercice officiel   (ex. ./scripts/check.sh 01)
+#         ./scripts/check.sh <dossier>             variante ou projet  (ex. ./scripts/check.sh variations/01-alias)
+#   Le dossier doit contenir index.ts et tsconfig.json ; il peut être relatif à la racine du dépôt ou au dossier courant.
 #   CHECK_QUIET=1   n'affiche que le verdict final (utilisé par check-all.sh)
 #   CHECK_TIMEOUT=N délai max en secondes pour l'exécution TS et Go (défaut 30)
 #
-# Fichiers produits dans out/ :
-#   XX.ts.txt / XX.ts.err   sortie standard / erreur de la référence TypeScript
-#   XX.build.log            sortie de la transpilation
-#   XX.vet.log              sortie de go vet
-#   XX.go.txt / XX.go.err   sortie standard / erreur de go run
-#   XX.diff                 diff entre XX.ts.txt et XX.go.txt
-#   XX.status               statut de chaque étape (lu par check-all.sh)
+# Fichiers produits dans out/ (ID = XX pour un exercice, nom du dossier pour une variante, ex. 01-alias) :
+#   ID.ts.txt / ID.ts.err   sortie standard / erreur de la référence TypeScript
+#   ID.build.log            sortie de la transpilation (+ ID.build.summary : cause extraite)
+#   ID.vet.log              sortie de go vet
+#   ID.go.txt / ID.go.err   sortie standard / erreur de go run
+#   ID.diff                 diff entre ID.ts.txt et ID.go.txt
+#   ID.status               statut de chaque étape (lu par check-all.sh)
 #
 # Code de sortie : 0 si les sorties TS et Go sont identiques, 1 sinon, 2 si usage invalide.
 
@@ -22,22 +24,50 @@ TIMEOUT="${CHECK_TIMEOUT:-30}"
 QUIET="${CHECK_QUIET:-0}"
 
 usage() {
-	echo "Usage : $0 <XX>   (ex. $0 00)" >&2
+	echo "Usage : $0 <XX | dossier>   (ex. $0 01, $0 variations/01-alias)" >&2
 	exit 2
 }
 
 [[ $# -eq 1 ]] || usage
-ID="$1"
-[[ "$ID" =~ ^[0-9]{2}$ ]] || usage
+TARGET="${1%/}"
 
-PROJECT="$ROOT/projects/$ID"
+if [[ "$TARGET" =~ ^[0-9]{2}$ ]]; then
+	ID="$TARGET"
+	LABEL="Exercice $ID"
+	PROJECT="$ROOT/projects/$ID"
+elif [[ -d "$ROOT/$TARGET" ]]; then
+	PROJECT="$(cd "$ROOT/$TARGET" && pwd)"
+elif [[ -d "$TARGET" ]]; then
+	PROJECT="$(cd "$TARGET" && pwd)"
+else
+	echo "💥 ÉCHEC [$TARGET] : ni numéro d'exercice (XX) ni dossier existant" >&2
+	exit 2
+fi
+
+if [[ -z "${ID:-}" ]]; then
+	case "$PROJECT" in
+		"$ROOT"/*) ;;
+		*) echo "💥 ÉCHEC [$TARGET] : le dossier doit être dans le dépôt ($ROOT)" >&2; exit 2 ;;
+	esac
+	ID="$(basename "$PROJECT")"
+	if [[ "$PROJECT" == "$ROOT/projects/$ID" && "$ID" =~ ^[0-9]{2}$ ]]; then
+		LABEL="Exercice $ID"
+	else
+		LABEL="Variante $ID"
+	fi
+fi
+
+# Chemin relatif à la racine : le CLI et tsx sont lancés depuis la racine du dépôt.
+REL="${PROJECT#"$ROOT"/}"
 DIST="$PROJECT/dist"
 OUT="$ROOT/out"
 
-if [[ ! -f "$PROJECT/index.ts" ]]; then
-	echo "💥 ÉCHEC [$ID] : projects/$ID/index.ts introuvable" >&2
-	exit 2
-fi
+for required in index.ts tsconfig.json; do
+	if [[ ! -f "$PROJECT/$required" ]]; then
+		echo "💥 ÉCHEC [$ID] : $REL/$required introuvable" >&2
+		exit 2
+	fi
+done
 
 mkdir -p "$OUT"
 rm -f "$OUT/$ID".*
@@ -68,10 +98,10 @@ VET=SKIP
 RUN=SKIP
 DIFF=SKIP
 
-log "━━ Exercice $ID ━━"
+log "━━ $LABEL ($REL) ━━"
 
 # 1. Référence TypeScript
-if (cd "$ROOT" && with_timeout pnpm exec tsx --tsconfig "projects/$ID/tsconfig.json" "projects/$ID/index.ts") \
+if (cd "$ROOT" && with_timeout pnpm exec tsx --tsconfig "$REL/tsconfig.json" "$REL/index.ts") \
 	> "$OUT/$ID.ts.txt" 2> "$OUT/$ID.ts.err"; then
 	TS=OK
 	log "  [1/5] référence TS   ✔"
@@ -81,8 +111,9 @@ else
 	excerpt "$OUT/$ID.ts.err"
 fi
 
-# 2. Transpilation
-if (cd "$ROOT" && pnpm --silent run "build:$ID") > "$OUT/$ID.build.log" 2>&1; then
+# 2. Transpilation (même commande que les scripts build:XX, valable aussi pour une variante)
+if (cd "$ROOT" && pnpm --silent run build --tsconfig "$REL/tsconfig.json" --input "$REL/index.ts" --output "$REL/dist") \
+	> "$OUT/$ID.build.log" 2>&1; then
 	BUILD=OK
 	log "  [2/5] transpilation  ✔"
 else
