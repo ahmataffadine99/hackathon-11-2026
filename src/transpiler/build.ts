@@ -14,6 +14,35 @@ import { sharedDependencyPackageName } from "@transformer";
 import { createSourcePackageLayout, goModuleContent } from "./sourcePackage";
 import { defaultSharedDependencies } from "./sharedDependency/defaults";
 
+// D9 : plusieurs dépendances partagées (par défaut ou enregistrées à la
+// demande) peuvent importer le même package Go (ex. "strconv" pour
+// l'inspection et pour une future conversion numérique). Go refuse un
+// import dupliqué dans un même fichier ; on ne garde que la première
+// occurrence de chaque chemin d'import, dans l'ordre d'arrivée.
+function dedupeImportsByPath(
+	imports: readonly GoAST.ImportDeclaration[],
+): readonly GoAST.ImportDeclaration[] {
+	return DCommon.pipe(
+		imports,
+		DArray.reduce(
+			DArray.reduceFrom<{
+				seenPaths: ReadonlySet<string>;
+				result: readonly GoAST.ImportDeclaration[];
+			}>({
+				seenPaths: new Set(),
+				result: [],
+			}),
+			({ element, lastValue, nextWithObject }) => lastValue.seenPaths.has(element.path)
+				? nextWithObject(lastValue, lastValue)
+				: nextWithObject(lastValue, {
+					seenPaths: new Set([...lastValue.seenPaths, element.path]),
+					result: DArray.push(lastValue.result, element),
+				}),
+		),
+		({ result }) => result,
+	);
+}
+
 export function build(
 	typescriptInstance: DInvocation.GetEvidenceResult<
 		typeof createTypescriptInstance,
@@ -104,6 +133,10 @@ export function build(
 							},
 						),
 					),
+					(params) => ({
+						...params,
+						imports: dedupeImportsByPath(params.imports),
+					}),
 					createFile,
 				);
 
