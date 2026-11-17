@@ -812,6 +812,69 @@ export const inspectSharedDependency = DCommon.memo(() => {
 		});
 	}
 
+	// Forme Plain (ADR-2, contrat §8) : testée avant Inspectable, car un
+	// Either[V] implémente les deux. L'AST ne représente pas `a, b := f()` :
+	// on déclare les deux variables puis on les affecte (`a, b = f()`), et le
+	// repli vers Inspectable passe par un switch de type plutôt que par une
+	// assertion « comma ok ».
+	const plainValueVariable = GoAST.createIdentifier("plainValue");
+	const isPlainVariable = GoAST.createIdentifier("isPlain");
+	const objectBinding = GoAST.createIdentifier("object");
+	const unsupportedValuePanic = call(GoAST.createIdentifier("panic"), [GoAST.createStringLiteral({ value: "shard_dependencies: unsupported value passed to Print" })]);
+
+	const inspectPlainCase = GoAST.createTypeSwitchCase({
+		types: DCommon.cast([
+			GoAST.createInterfaceType({
+				elements: [
+					GoAST.createInterfaceMethod({
+						identifier: GoAST.createIdentifier("InspectPlain"),
+						arguments: [],
+						returnTypes: [GoAST.builtinTypeReferences.any, GoAST.builtinTypeReferences.bool],
+					}),
+				],
+			}),
+		]),
+		statements: [
+			GoAST.createVariableDeclarationZeroValue({
+				identifier: plainValueVariable,
+				typeReference: GoAST.builtinTypeReferences.any,
+			}),
+			GoAST.createVariableDeclarationZeroValue({
+				identifier: isPlainVariable,
+				typeReference: GoAST.builtinTypeReferences.bool,
+			}),
+			GoAST.createAssignmentStatement({
+				targets: DCommon.cast([plainValueVariable, isPlainVariable]),
+				values: DCommon.cast([
+					call(
+						GoAST.createSelectorExpression({
+							target: typedBinding,
+							identifier: GoAST.createIdentifier("InspectPlain"),
+						}),
+						[],
+					),
+				]),
+			}),
+			GoAST.createIfStatement({
+				condition: isPlainVariable,
+				body: GoAST.createBlockStatement({
+					statements: returnCallStatements(inspectValueIdentifier, [plainValueVariable, depthParam]),
+				}),
+			}),
+			GoAST.createTypeSwitchStatementWithoutDefault({
+				expression: typedBinding,
+				identifier: objectBinding,
+				cases: [
+					GoAST.createTypeSwitchCase({
+						types: DCommon.cast([inspectableTypeIdentifier]),
+						statements: returnCallStatements(inspectObjectIdentifier, [objectBinding, depthParam]),
+					}),
+				],
+			}),
+			unsupportedValuePanic,
+		],
+	});
+
 	const inspectValueDeclaration = GoAST.createFunctionDeclaration({
 		identifier: inspectValueIdentifier,
 		generic: [],
@@ -866,6 +929,7 @@ export const inspectSharedDependency = DCommon.memo(() => {
 								}),
 							],
 						}),
+						inspectPlainCase,
 						GoAST.createTypeSwitchCase({
 							types: DCommon.cast([inspectableTypeIdentifier]),
 							statements: returnCallStatements(inspectObjectIdentifier, [typedBinding, depthParam]),
