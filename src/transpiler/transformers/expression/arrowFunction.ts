@@ -26,8 +26,8 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 			return context.notSupport();
 		}
 
-		if (node.asteriskToken || node.modifiers?.some((modifier) => modifier.kind === TsAST.SyntaxKind.AsyncKeyword)) {
-			return context.error(node, "async-or-generator-function-not-supported");
+		if (node.asteriskToken) {
+			return context.error(node, "generator-function-not-supported");
 		}
 
 		const { typeChecker } = context.transpilation;
