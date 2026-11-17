@@ -9,6 +9,7 @@ import type { createTypescriptInstance } from "./createTypescriptInstance";
 import { createTranspilationContext } from "./context/transpilation";
 import { transformSourceFile } from "./transformSourceFile";
 import { createFile, type CreateFileParams } from "./createFile";
+import { toDPathAbsolute, toNativePath } from "./path";
 import { sharedDependencyPackageName } from "@transformer";
 import { createSourcePackageLayout, goModuleContent } from "./sourcePackage";
 import { defaultSharedDependencies } from "./sharedDependency/defaults";
@@ -118,7 +119,9 @@ export function build(
 				);
 			}
 
-			const sourceFile = await typescriptInstance.project.program.getSourceFile(path);
+			const sourceFile = await typescriptInstance.project.program.getSourceFile(
+				toNativePath(path),
+			);
 
 			if (!sourceFile) {
 				return exit(DEither.left("source-file-not-found", path));
@@ -141,7 +144,7 @@ export function build(
 
 			const sourcePackage = DCommon.pipe(
 				DEither.rightPipe(
-					DPath.createAbsolute(sourceFile.path),
+					toDPathAbsolute(sourceFile.path),
 					(sourcePath) => createSourcePackageLayout(typescriptInstance.projectWorkDirectory, sourcePath),
 				),
 				DEither.unwrapRight,
