@@ -39,3 +39,18 @@ Les exercices officiels (`projects/`) ne couvrent qu'un exemple par problème. C
 | `04-unary` | `-x` sur une variable, `!` sur un booléen, `!==` | `Success(-3)`, `Fail`, `Fail` | P2 |
 
 > `pipe(x)` **sans étape** est accepté à l'exécution, mais **refusé par TypeScript** (`Expected 2-16 arguments, but got 1`). Le cas est hors du TypeScript valide et donc hors périmètre : il est remplacé par `03-pipe-one-step`.
+
+> `03-curried-stored` est une **limite documentée** (Sprint 3) : sans contexte, TypeScript type lui-même `const step = whenIsRight(coalescing)` en `(input: unknown) => unknown`, et l'appel `step(add(1, 2))` en `unknown`. Aucun type Go n'est déductible du checker. Le transpileur échoue avec `function-value-without-instantiated-signature`, sans rien approximer.
+
+## Exercices 05 et 06
+
+| Variante | Ce qu'elle vérifie | Sortie de référence |
+|---|---|---|
+| `05-otherwise-left-input` | `whenIsRightOtherwise` (forme directe) sur un `Fail` : seule la branche « otherwise » est évaluée, et elle reçoit l'Either **complet** ; le callback Right n'est jamais appelé | `[ -1 ]` |
+| `05-map-direct` | `DArray.map` en forme **directe**, avec une fonction fléchée puis avec `DString.to` passé en valeur ; tableau vide typé (`const empty: number[] = []`) | `[ 2, 5, -6 ]`, `[ '1', '2.5', '-3' ]`, `[]` |
+| `05-to-values` | `DString.to` (format de `String(n)`) : `-0` donne `0`, `1e21` donne `1e+21`, `1e-7` ; chaîne et booléen | `0`, `1.5`, `1e+21`, `1e-7`, … |
+| `05-map-closure` | Fonctions fléchées qui **capturent** une variable extérieure, dont une à corps-bloc avec deux `return`, dans un `pipe` avec `map` curryfié | `[ 0, 12, 13 ]` |
+| `06-left-print` | `DEither.left(info, valeur)` : affichage d'un `Left` (sans clé de tag), puis `isLeft` | l'objet `Left`, puis `gauche` |
+| `06-match-curried` | `matchInformation` **curryfié** dans un `pipe`, sur un succès puis sur un `Left` porteur d'une valeur ; gabarit de chaîne | `5`, `trop grand : 500` |
+| `06-ternary-lazy` | Ternaire : seule la branche choisie est évaluée (effet observable dans les deux branches) | `évalué : oui`, `oui`, `évalué : non`, `non`, `30` |
+| `06-short-circuit` | `&&` et `\|\|` court-circuitent (D2) : l'opérande de droite, avec effet observable, n'est évalué que si nécessaire | `a`, `c`, `e`, `f` évalués ; `b` et `d` jamais |
