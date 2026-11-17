@@ -18,13 +18,15 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 | Exercice | État | Fiche |
 |---|---|---|
 | 00 (exemple) | ✅ sortie Go identique à TypeScript | [00.md](docs/exercises/00.md) |
-| 01 | 🟠 ✅ avec le correctif d'intégration I1 (en attente de merge) ; 💥 sur `main` (`isRight` non branché) | [01.md](docs/exercises/01.md) |
-| 02 | 🚧 Sprint 2 : `whenIsRight`, `coalescing` en valeur, union `Plain` (ADR-2) | [02.md](docs/exercises/02.md) |
-| 03 | 🚧 Sprint 2 : `pipe`, forme curryfiée en `func` literal (ADR-3) | [03.md](docs/exercises/03.md) |
-| 04 | 🚧 Sprint 2 : `-1` (retours inférés et `fail()` déjà fonctionnels) | [04.md](docs/exercises/04.md) |
-| 05 à 10 | ⏳ à venir | – |
+| 01 | ✅ union de retour, `isRight`, `print` | [01.md](docs/exercises/01.md) |
+| 02 | ✅ `whenIsRight`, `coalescing` en valeur (ADR-7), union `Plain` (ADR-2) | [02.md](docs/exercises/02.md) |
+| 03 | ✅ `pipe`, forme curryfiée en `func` literal inliné (ADR-3) | [03.md](docs/exercises/03.md) |
+| 04 | ✅ retours multiples inférés, `fail()`, `-1` | [04.md](docs/exercises/04.md) |
+| 05 | ✅ `whenIsRightOtherwise`, fonction fléchée, `map`, `DString.to` (ADR-7) | [05.md](docs/exercises/05.md) |
+| 06 | ✅ `left`, ternaire et `\|\|` (ADR-8), `matchInformation` (ADR-9) | [06.md](docs/exercises/06.md) |
+| 07 à 10 | ⏳ Sprints 4 et 5 | – |
 
-**0/10 exercices validés sur `main`** (1/10 avec I1). Variantes : 19 au total, dont 0 passent sur `main` (5 avec I1). État au 17/11, `./scripts/check-all.sh` et `--variations`.
+**7/11 cibles (00 à 06) identiques à TypeScript** sur la branche `sprint3/full`. Variantes : **26/27** ; l'écart est une limite documentée (`03-curried-stored`, voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). État au 17/11, `./scripts/check-all.sh` et `--variations`.
 
 Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de régression (voir [docs/setup.md §8](docs/setup.md#8-contrôler-une-pr-avant-de-la-merger-règle-de-merge)).
 
