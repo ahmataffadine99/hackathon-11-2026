@@ -7,7 +7,7 @@ import { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { createTransformer, type Transformer } from "@transformer";
 import { expressionTransformers } from ".";
-import { goTypeOf } from "./goTypeOf";
+import { goTypeOf } from "../type/goTypeOf";
 
 export const arrayLiteralTransformer: Transformer<GoAST.SliceLiteral> = createTransformer(
 	async(node, context) => {

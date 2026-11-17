@@ -2,7 +2,7 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST } from "@go";
-import { createTransformer, type Transformer } from "@transformer";
+import { createTransformer, type NotfoundTransformer, type TransformationError, type TransformationNotSupported, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import type { BuildContext } from "../../context/build";
 import { expressionTransformers } from "../expression";
@@ -52,6 +52,45 @@ async function transformBranchToBlock(
 	});
 }
 
+// else absent : undefined ; else if : l'if imbriqué (ses `before` dans un bloc,
+// pour que la condition ne soit évaluée que si la précédente est fausse) ; sinon un bloc.
+async function transformElseBranch(
+	node: TsAST.Statement | undefined,
+	context: BuildContext,
+): Promise<
+	| DEither.Right<"else-branch", GoAST.BlockStatement | GoAST.IfStatement | undefined>
+	| TransformationError
+	| NotfoundTransformer
+	| TransformationNotSupported
+> {
+	if (!node) {
+		return DEither.right("else-branch", undefined);
+	}
+
+	if (TsAST.isIfStatement(node)) {
+		const nestedIf = DEither.unwrapRight(await transformIfStatement(node, context));
+
+		if (DEither.isLeft(nestedIf)) {
+			return nestedIf;
+		}
+
+		return DEither.right(
+			"else-branch",
+			DArray.lengthEqual(nestedIf.before, 0)
+				? nestedIf.result
+				: GoAST.createBlockStatement({
+					statements: DArray.concat(nestedIf.before, [nestedIf.result]),
+				}),
+		);
+	}
+
+	const elseBody = DEither.unwrapRight(await transformBranchToBlock(node, context));
+
+	return DEither.isLeft(elseBody)
+		? elseBody
+		: DEither.right("else-branch", elseBody.result);
+}
+
 async function transformIfStatement(
 	node: TsAST.IfStatement,
 	context: BuildContext,
@@ -74,36 +113,13 @@ async function transformIfStatement(
 		return body;
 	}
 
-	let elseBranch: GoAST.BlockStatement | GoAST.IfStatement | undefined;
+	const elseBranch = await DCommon.asyncPipe(
+		transformElseBranch(node.elseStatement, context),
+		DEither.unwrapRight,
+	);
 
-	if (node.elseStatement) {
-		if (TsAST.isIfStatement(node.elseStatement)) {
-			const nestedIf = await DCommon.asyncPipe(
-				transformIfStatement(node.elseStatement, context),
-				DEither.unwrapRight,
-			);
-
-			if (DEither.isLeft(nestedIf)) {
-				return nestedIf;
-			}
-
-			elseBranch = DArray.lengthEqual(nestedIf.before, 0)
-				? nestedIf.result
-				: GoAST.createBlockStatement({
-					statements: DArray.concat(nestedIf.before, [nestedIf.result]),
-				});
-		} else {
-			const elseBody = await DCommon.asyncPipe(
-				transformBranchToBlock(node.elseStatement, context),
-				DEither.unwrapRight,
-			);
-
-			if (DEither.isLeft(elseBody)) {
-				return elseBody;
-			}
-
-			elseBranch = elseBody.result;
-		}
+	if (DEither.isLeft(elseBranch)) {
+		return elseBranch;
 	}
 
 	return context.success({

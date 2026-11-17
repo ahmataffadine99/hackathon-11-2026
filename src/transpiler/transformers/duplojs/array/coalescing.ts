@@ -6,7 +6,8 @@ import type { Type } from "typescript/async";
 import type { BuildContext } from "../../../context/build";
 import { createTransformer, type Transformer } from "@transformer";
 import { expressionTransformers } from "../../expression";
-import { goTypeOf } from "../../expression/goTypeOf";
+import { goTypeOf } from "../../type/goTypeOf";
+import { createFunctionValue } from "../application";
 
 async function coalesceValue(
 	value: GoAST.Expression,
@@ -61,15 +62,6 @@ async function getCallbackParameterType(
 	return checker.getTypeOfSymbolAtLocation(parameter, site);
 }
 
-async function createFunctionValue(params: {
-	site: TsAST.Node;
-	context: BuildContext;
-	body: (parameters: readonly GoAST.Identifier[]) => Promise<unknown>;
-}) {
-	// Temporary local contract stub; replace with P3 before merging.
-	return params.context.notSupport();
-}
-
 export const coalescingExpressionHandler: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context) => {
 		if (!TsAST.isCallExpression(node)) {
@@ -102,7 +94,7 @@ export const coalescingExpressionHandler: Transformer<GoAST.Expression> = create
 			return context.error(node, "DArray.coalescing requires exactly one non-spread argument");
 		}
 
-		const argument = node.arguments[0];
+		const [argument] = node.arguments;
 
 		if (!argument || TsAST.isSpreadElement(argument)) {
 			return context.error(node, "DArray.coalescing requires exactly one non-spread argument");

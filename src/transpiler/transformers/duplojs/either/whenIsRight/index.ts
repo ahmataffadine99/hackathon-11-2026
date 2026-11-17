@@ -1,16 +1,15 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import * as DModeling from "@duplojs/lang/modeling";
 import { type Transformer, type TransformationSuccess, type TransformationError, type NotfoundTransformer } from "@transformer";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { SignatureKind, type Type } from "typescript/async";
 import { type BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
-import { typeTransformers } from "../../../type";
+import { goTypeOf, type GoType } from "../../../type/goTypeOf";
+import { coerceExpression } from "../coerce";
 import { createFunctionValue, resolveExpectedFunctionSignature } from "../../application";
-import { eitherTypeIdentifier } from "../sharedDependency";
 
 // DEither.whenIsRight(e, f) / whenIsRight(f) : inlinée dans les deux formes
 // (ADR-3, PLAN_HACKATHON.md §0.5). La forme directe évalue e puis f, dans
@@ -19,22 +18,6 @@ import { eitherTypeIdentifier } from "../sharedDependency";
 
 const isRightMethodIdentifier = GoAST.createIdentifier("IsRight");
 const valueFieldIdentifier = GoAST.createIdentifier("Value");
-
-// Bouchon LOCAL en attendant goTypeOf (P4) : même recette que application.ts
-// (typeToTypeNode puis typeTransformers.value), à retirer à son merge.
-async function localGoTypeOf(
-	type: Type,
-	site: TsAST.Node,
-	context: BuildContext,
-) {
-	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, site);
-
-	if (!typeNode) {
-		return context.error(site, "unable-to-create-type-node-for-whenisright");
-	}
-
-	return context.transform(typeNode, typeTransformers.value);
-}
 
 async function resolveCallbackReturnType(
 	callbackNode: TsAST.Node,
@@ -49,53 +32,19 @@ async function resolveCallbackReturnType(
 	return signature && typeChecker.getReturnTypeOfSignature(signature);
 }
 
-function extractEitherValueGoType(type: GoAST.Type | GoAST.TypeReference) {
-	if (
-		DModeling.hasTagValue(type, "[node]type-reference-generic")
-		&& DModeling.hasTagValue(type.typeReference, "[node]type-reference-package")
-		&& type.typeReference.identifier === eitherTypeIdentifier
-	) {
-		return DArray.first(type.typeArguments);
-	}
-
-	return undefined;
-}
-
-// Bouchon LOCAL en attendant coerceExpression (P4, ADR-2) : ne couvre que
-// l'identité (les deux côtés rendent le même Either[V]), seul cas qui ne
-// dépend pas de EitherPlainOf/EitherRetype (pas encore implémentés). Toute
-// union hétérogène (ex. 02, 03 : `Fail | readonly [number]`) reste donc
-// documentée comme une limite de ce patch, pas silencieusement approximée.
 async function coerceToResultType(params: {
 	expression: GoAST.Expression;
 	from: Type;
-	to: GoAST.Type | GoAST.TypeReference;
+	to: Type;
 	site: TsAST.Node;
 	context: BuildContext;
 }): Promise<TransformationSuccess<GoAST.Expression> | TransformationError | NotfoundTransformer> {
-	const { expression, from, to, site, context } = params;
+	const { context, ...coerceParams } = params;
+	const coerced = await coerceExpression(coerceParams, context);
 
-	const fromGoType = await DCommon.asyncPipe(
-		localGoTypeOf(from, site, context),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(fromGoType)) {
-		return fromGoType;
-	}
-
-	if (!DArray.lengthEqual(fromGoType.before, 0)) {
-		return context.error(site, "unsupported-before-on-whenisright-coercion");
-	}
-
-	const fromValue = extractEitherValueGoType(fromGoType.result);
-	const toValue = extractEitherValueGoType(to);
-
-	if (fromValue && toValue && fromValue === toValue) {
-		return context.success({ result: expression });
-	}
-
-	return context.error(site, "duplojs-either-whenisright-heterogeneous-union-not-supported");
+	return DEither.hasInformation(coerced, "transformation-not-supported")
+		? context.error(params.site, "duplojs-either-whenisright-unsupported-coercion")
+		: coerced;
 }
 
 async function buildBranches(params: {
@@ -103,12 +52,13 @@ async function buildBranches(params: {
 	eitherType: Type;
 	callbackExpression: GoAST.Expression;
 	callbackReturnType: Type;
-	resultGoType: GoAST.Type | GoAST.TypeReference;
+	resultType: Type;
+	resultGoType: GoType;
 	site: TsAST.Node;
 	context: BuildContext;
 }): Promise<TransformationSuccess<GoAST.Expression> | TransformationError | NotfoundTransformer> {
 	const {
-		eitherIdentifier, eitherType, callbackExpression, callbackReturnType, resultGoType, site, context,
+		eitherIdentifier, eitherType, callbackExpression, callbackReturnType, resultType, resultGoType, site, context,
 	} = params;
 
 	const rightValue = GoAST.createCallExpression({
@@ -125,7 +75,7 @@ async function buildBranches(params: {
 		coerceToResultType({
 			expression: rightValue,
 			from: callbackReturnType,
-			to: resultGoType,
+			to: resultType,
 			site,
 			context,
 		}),
@@ -140,7 +90,7 @@ async function buildBranches(params: {
 		coerceToResultType({
 			expression: eitherIdentifier,
 			from: eitherType,
-			to: resultGoType,
+			to: resultType,
 			site,
 			context,
 		}),
@@ -229,17 +179,14 @@ async function directWhenIsRightHandler(
 		return context.error(callbackArgumentNode, "unable-to-resolve-whenisright-callback-return-type");
 	}
 
+	const resultType = await typeChecker.getTypeAtLocation(node);
 	const resultGoType = await DCommon.asyncPipe(
-		localGoTypeOf(await typeChecker.getTypeAtLocation(node), node, context),
+		goTypeOf(resultType, node, context),
 		DEither.unwrapRight,
 	);
 
 	if (DEither.isLeft(resultGoType)) {
 		return resultGoType;
-	}
-
-	if (!DArray.lengthEqual(resultGoType.before, 0)) {
-		return context.error(node, "unsupported-before-on-whenisright-result-type");
 	}
 
 	// e est lu 3 fois (IsRight, Value, branche gauche) : une seule évaluation,
@@ -256,6 +203,7 @@ async function directWhenIsRightHandler(
 			eitherType: await typeChecker.getTypeAtLocation(eitherArgumentNode),
 			callbackExpression: callbackResult.result,
 			callbackReturnType,
+			resultType,
 			resultGoType: resultGoType.result,
 			site: node,
 			context,
@@ -328,7 +276,7 @@ async function curriedWhenIsRightHandler(
 
 			const returnType = await typeChecker.getReturnTypeOfSignature(expectedSignature);
 			const resultGoType = await DCommon.asyncPipe(
-				localGoTypeOf(returnType, node, context),
+				goTypeOf(returnType, node, context),
 				DEither.unwrapRight,
 			);
 
@@ -336,15 +284,12 @@ async function curriedWhenIsRightHandler(
 				return resultGoType;
 			}
 
-			if (!DArray.lengthEqual(resultGoType.before, 0)) {
-				return context.error(node, "unsupported-before-on-whenisright-result-type");
-			}
-
 			return buildBranches({
 				eitherIdentifier,
 				eitherType,
 				callbackExpression: callbackResult.result,
 				callbackReturnType,
+				resultType: returnType,
 				resultGoType: resultGoType.result,
 				site: node,
 				context,
