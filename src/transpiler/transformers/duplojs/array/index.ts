@@ -4,6 +4,7 @@ import { TsAST } from "@typescript";
 import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { coalescingExpressionHandler } from "./coalescing";
+import { mapExpressionHandler } from "./map";
 
 export const duploJSArrayExpressionTransformer: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context) => {
@@ -29,6 +30,10 @@ export const duploJSArrayExpressionTransformer: Transformer<GoAST.Expression> = 
 
 		if (moduleReference.symbol.name === "coalescing") {
 			return coalescingExpressionHandler.transformer(node, context);
+		}
+
+		if (moduleReference.symbol.name === "map") {
+			return mapExpressionHandler(node, context);
 		}
 
 		return context.error(node);

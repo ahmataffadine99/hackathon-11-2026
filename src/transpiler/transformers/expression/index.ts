@@ -10,6 +10,7 @@ import { arrayLiteralTransformer } from "./arrayLiteral";
 import { prefixUnaryExpressionTransformer } from "./prefixUnary";
 import { sharedExpressionTransformers } from "../shared";
 import { binaryExpressionTransformer } from "./binary";
+import { arrowFunctionTransformer } from "./arrowFunction";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
@@ -22,5 +23,6 @@ export const expressionTransformers = DCommon.memo(
 		arrayLiteralTransformer,
 		prefixUnaryExpressionTransformer,
 		binaryExpressionTransformer,
+		arrowFunctionTransformer,
 	],
 );
