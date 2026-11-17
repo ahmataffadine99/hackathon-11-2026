@@ -78,7 +78,10 @@ export function getEither2GoTypes(goType: GoType): DEither.Maybe<Either2GoTypes>
 	const rightType = DArray.at(goType.typeArguments, 1);
 
 	return leftType && rightType
-		? DEither.some({ leftType, rightType })
+		? DEither.some({
+			leftType,
+			rightType,
+		})
 		: DEither.none();
 }
 

@@ -71,8 +71,7 @@ export async function bindArrayPattern(params: {
 	for (const element of pattern.elements) {
 		if (
 			!element
-			||
-			TsAST.isOmittedExpression(element)
+			|| TsAST.isOmittedExpression(element)
 			|| !TsAST.isBindingElement(element)
 		) {
 			return context.error(pattern, "omitted-destructuring-elements-are-not-supported");

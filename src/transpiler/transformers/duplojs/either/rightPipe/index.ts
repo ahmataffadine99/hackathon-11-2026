@@ -26,12 +26,16 @@ import {
 const isLeftMethodIdentifier = GoAST.createIdentifier("IsLeft");
 
 async function assignResult(
-	value: TypedExpression,
-	resultIdentifier: GoAST.Identifier,
-	resultGoType: GoType,
-	site: TsAST.Node,
+	params: {
+		value: TypedExpression;
+		resultIdentifier: GoAST.Identifier;
+		resultGoType: GoType;
+		site: TsAST.Node;
+	},
 	context: BuildContext,
 ) {
+	const { value, resultIdentifier, resultGoType, site } = params;
+
 	const targetEither2Types = DEither.unwrapRight(getEither2GoTypes(resultGoType));
 	const targetValueAccess = DEither.unwrapRight(getEitherValueAccess(resultGoType));
 	const sourceValueAccess = DEither.unwrapRight(getEitherValueAccess(value.goType));
@@ -326,7 +330,12 @@ async function buildStages(params: {
 	const callback = callbacks[stageIndex];
 
 	if (!callback) {
-		return assignResult(value, resultIdentifier, resultGoType, site, context);
+		return assignResult({
+			value,
+			resultIdentifier,
+			resultGoType,
+			site,
+		}, context);
 	}
 
 	const eitherValueAccess = DEither.unwrapRight(getEitherValueAccess(value.goType));
@@ -352,7 +361,12 @@ async function buildStages(params: {
 	}
 
 	const leftBranch = DEither.unwrapRight(
-		await assignResult(value, resultIdentifier, resultGoType, site, context),
+		await assignResult({
+			value,
+			resultIdentifier,
+			resultGoType,
+			site,
+		}, context),
 	);
 
 	if (DEither.isLeft(leftBranch)) {
@@ -496,4 +510,4 @@ export async function rightPipeExpressionHandler(
 		],
 		result: resultIdentifier,
 	});
-};
+}

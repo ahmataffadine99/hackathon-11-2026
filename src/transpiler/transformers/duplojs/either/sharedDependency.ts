@@ -219,13 +219,29 @@ export const eitherDependency = DCommon.memo(() => {
 	) => GoAST.createStructLiteral({
 		typeReference: either2OfGeneric,
 		elements: [
-			GoAST.createKeyedElement({ key: either2Fields.kind, value: kind }),
-			GoAST.createKeyedElement({ key: either2Fields.information, value: information }),
+			GoAST.createKeyedElement({
+				key: either2Fields.kind,
+				value: kind,
+			}),
+			GoAST.createKeyedElement({
+				key: either2Fields.information,
+				value: information,
+			}),
 			...(left
-				? [GoAST.createKeyedElement({ key: either2Fields.left, value: left })]
+				? [
+					GoAST.createKeyedElement({
+						key: either2Fields.left,
+						value: left,
+					}),
+				]
 				: []),
 			...(right
-				? [GoAST.createKeyedElement({ key: either2Fields.right, value: right })]
+				? [
+					GoAST.createKeyedElement({
+						key: either2Fields.right,
+						value: right,
+					}),
+				]
 				: []),
 		],
 	});
@@ -368,9 +384,7 @@ export const eitherDependency = DCommon.memo(() => {
 							}),
 							GoAST.createExpressionSwitchCase({
 								expressions: DCommon.cast([eitherKindIdentifiers.fail]),
-								statements: [
-									either2InspectEntries("left", undefinedLiteral, "fail"),
-								],
+								statements: [either2InspectEntries("left", undefinedLiteral, "fail")],
 							}),
 							GoAST.createExpressionSwitchCase({
 								expressions: DCommon.cast([eitherKindIdentifiers.right]),
