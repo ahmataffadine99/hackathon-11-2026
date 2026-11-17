@@ -1,14 +1,11 @@
-import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DGenerator from "@duplojs/lang/generator";
-import * as DModeling from "@duplojs/lang/modeling";
-import { type GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { type Type } from "typescript/async";
 import { type BuildContext } from "../../../context/build";
-import { typeTransformers } from "../../type";
-import { eitherTypeIdentifier } from "./sharedDependency";
+import { goTypeOf, type GoType } from "../../type/goTypeOf";
+import { getEitherValueGoType } from "./goType";
 
 function findEnclosingFunction(node: TsAST.Node): TsAST.FunctionLikeDeclaration | undefined {
 	if (TsAST.isFunctionLikeDeclaration(node)) {
@@ -40,7 +37,7 @@ async function getEnclosingReturnType(node: TsAST.CallExpression, context: Build
  * Détermine V pour un constructeur Either (success, fail) à partir du type
  * ATTENDU au site d'appel, pas seulement de l'argument : fail() n'a pas
  * d'argument, et success(3) doit produire le V de l'union englobante.
- * Candidats, dans l'ordre : type contextuel, type de retour de la fonction
+ * Replis (C11), dans l'ordre : type contextuel, type de retour de la fonction
  * englobante, type propre de l'appel. Le premier qui se traduit en Either[V] gagne.
  */
 export async function resolveExpectedEitherValueType(
@@ -58,31 +55,26 @@ export async function resolveExpectedEitherValueType(
 	const valueType = await DCommon.asyncPipe(
 		candidates,
 		DGenerator.asyncReduce(
-			DGenerator.reduceFrom<GoAST.Type | GoAST.TypeReference | undefined>(undefined),
+			DGenerator.reduceFrom<GoType | undefined>(undefined),
 			async({ item: getCandidate, next, exit }) => {
 				const candidate = await getCandidate();
-				const typeNode = candidate && await typeChecker.typeToTypeNode(candidate, node);
 
-				if (!typeNode) {
+				if (!candidate) {
 					return next(undefined);
 				}
 
 				const goType = await DCommon.asyncPipe(
-					context.transform(typeNode, typeTransformers.value),
+					goTypeOf(candidate, node, context),
 					DEither.unwrapRight,
 				);
 
-				if (
-					!DEither.isLeft(goType)
-					&& DArray.lengthEqual(goType.before, 0)
-					&& DModeling.hasTagValue(goType.result, "[node]type-reference-generic")
-					&& DModeling.hasTagValue(goType.result.typeReference, "[node]type-reference-package")
-					&& goType.result.typeReference.identifier === eitherTypeIdentifier
-				) {
-					return exit(DArray.first(goType.result.typeArguments));
-				}
+				const eitherValueType = DEither.isLeft(goType)
+					? goType
+					: DEither.unwrapRight(getEitherValueGoType(goType.result));
 
-				return next(undefined);
+				return DEither.isLeft(eitherValueType)
+					? next(undefined)
+					: exit(eitherValueType);
 			},
 		),
 	);

@@ -8,14 +8,21 @@ import { createSharedDependency } from "@transformer";
 
 export const eitherKindIdentifier = GoAST.createIdentifier("EitherKind");
 export const eitherTypeIdentifier = GoAST.createIdentifier("Either");
+// V d'un Either sans valeur (Fail seul) : JSUndefined, dépendance par défaut.
+export const eitherNoValueIdentifier = GoAST.createIdentifier("JSUndefined");
 export const eitherSuccessFunctionIdentifier = GoAST.createIdentifier("EitherSuccessOf");
 export const eitherFailFunctionIdentifier = GoAST.createIdentifier("EitherFailOf");
+// ADR-2 : valeur nue (non Either) rangée dans une union Either[V].
+export const eitherPlainFunctionIdentifier = GoAST.createIdentifier("EitherPlainOf");
+// ADR-2 : Either[From] vers Either[To] quand les variantes en jeu n'ont pas de valeur.
+export const eitherRetypeFunctionIdentifier = GoAST.createIdentifier("EitherRetype");
 
 export const eitherKindIdentifiers = {
 	right: GoAST.createIdentifier("EitherKindRight"),
 	left: GoAST.createIdentifier("EitherKindLeft"),
 	success: GoAST.createIdentifier("EitherKindSuccess"),
 	fail: GoAST.createIdentifier("EitherKindFail"),
+	plain: GoAST.createIdentifier("EitherKindPlain"),
 } as const;
 
 // TEMPORAIRE : InspectEntry appartient au contrat de la dépendance par défaut
@@ -46,6 +53,21 @@ export const eitherDependency = DCommon.memo(() => {
 	const eitherOfGeneric = GoAST.createGenericTypeReference({
 		typeReference: eitherTypeIdentifier,
 		typeArguments: DCommon.cast([generic]),
+	});
+
+	const retypeToParameter = GoAST.createTypeParameter({
+		identifier: GoAST.createIdentifier("To"),
+		constraint: GoAST.builtinTypeReferences.any,
+	});
+
+	const retypeFromParameter = GoAST.createTypeParameter({
+		identifier: GoAST.createIdentifier("From"),
+		constraint: GoAST.builtinTypeReferences.any,
+	});
+
+	const eitherOfRetypeTo = GoAST.createGenericTypeReference({
+		typeReference: eitherTypeIdentifier,
+		typeArguments: DCommon.cast([retypeToParameter.identifier]),
 	});
 
 	const receiverField = (field: GoAST.Identifier) => GoAST.createSelectorExpression({
@@ -169,6 +191,7 @@ export const eitherDependency = DCommon.memo(() => {
 					eitherKindIdentifiers.left,
 					eitherKindIdentifiers.success,
 					eitherKindIdentifiers.fail,
+					eitherKindIdentifiers.plain,
 				],
 				(identifier, { index }) => GoAST.createConstantDeclaration({
 					identifier,
@@ -240,6 +263,80 @@ export const eitherDependency = DCommon.memo(() => {
 					],
 				}),
 			}),
+			// ADR-2 : une valeur nue (ex. le tableau renvoyé par coalescing dans
+			// whenIsRight) garde sa représentation par valeur dans Either[V].
+			// Elle n'a ni côté ni information : IsRight et IsLeft sont faux,
+			// comme DEither.isRight / isLeft à l'exécution sur une valeur non Either.
+			GoAST.createFunctionDeclaration({
+				identifier: eitherPlainFunctionIdentifier,
+				generic: [typeParameter],
+				arguments: [
+					GoAST.createFunctionArgument({
+						identifier: valueArgument,
+						type: generic,
+					}),
+				],
+				returnTypes: [eitherOfGeneric],
+				body: GoAST.createBlockStatement({
+					statements: [
+						GoAST.createReturnStatement({
+							values: [
+								GoAST.createStructLiteral({
+									typeReference: eitherOfGeneric,
+									elements: [
+										GoAST.createKeyedElement({
+											key: fieldIdentifiers.kind,
+											value: eitherKindIdentifiers.plain,
+										}),
+										GoAST.createKeyedElement({
+											key: fieldIdentifiers.value,
+											value: valueArgument,
+										}),
+									],
+								}),
+							],
+						}),
+					],
+				}),
+			}),
+			// Either[From] vers Either[To] : conserve Kind et Information, abandonne
+			// Value. Correct uniquement pour des variantes sans valeur (Fail) :
+			// coerceExpression ne l'émet que dans ce cas (ADR-2).
+			GoAST.createFunctionDeclaration({
+				identifier: eitherRetypeFunctionIdentifier,
+				generic: [retypeToParameter, retypeFromParameter],
+				arguments: [
+					GoAST.createFunctionArgument({
+						identifier: receiver,
+						type: GoAST.createGenericTypeReference({
+							typeReference: eitherTypeIdentifier,
+							typeArguments: DCommon.cast([retypeFromParameter.identifier]),
+						}),
+					}),
+				],
+				returnTypes: [eitherOfRetypeTo],
+				body: GoAST.createBlockStatement({
+					statements: [
+						GoAST.createReturnStatement({
+							values: [
+								GoAST.createStructLiteral({
+									typeReference: eitherOfRetypeTo,
+									elements: [
+										GoAST.createKeyedElement({
+											key: fieldIdentifiers.kind,
+											value: receiverField(fieldIdentifiers.kind),
+										}),
+										GoAST.createKeyedElement({
+											key: fieldIdentifiers.information,
+											value: receiverField(fieldIdentifiers.information),
+										}),
+									],
+								}),
+							],
+						}),
+					],
+				}),
+			}),
 			isSideMethod(
 				GoAST.createIdentifier("IsRight"),
 				[eitherKindIdentifiers.right, eitherKindIdentifiers.success],
@@ -248,6 +345,39 @@ export const eitherDependency = DCommon.memo(() => {
 				GoAST.createIdentifier("IsLeft"),
 				[eitherKindIdentifiers.left, eitherKindIdentifiers.fail],
 			),
+			// Contrat ADR-2 avec Print (defaults/inspect) : Print teste InspectPlain
+			// AVANT InspectEntries ; un Plain s'affiche donc comme sa valeur nue et
+			// InspectEntries n'est jamais appelé pour lui.
+			GoAST.createMethodDeclaration({
+				identifier: GoAST.createIdentifier("InspectPlain"),
+				receiver: [receiver, eitherOfGeneric],
+				generic: [],
+				arguments: [],
+				returnTypes: [GoAST.builtinTypeReferences.any, GoAST.builtinTypeReferences.bool],
+				body: GoAST.createBlockStatement({
+					statements: [
+						GoAST.createIfStatement({
+							condition: kindEquals(eitherKindIdentifiers.plain),
+							body: GoAST.createBlockStatement({
+								statements: [
+									GoAST.createReturnStatement({
+										values: [
+											receiverField(fieldIdentifiers.value),
+											GoAST.createBooleanLiteral({ value: true }),
+										],
+									}),
+								],
+							}),
+						}),
+						GoAST.createReturnStatement({
+							values: [
+								GoAST.createNilLiteral({}),
+								GoAST.createBooleanLiteral({ value: false }),
+							],
+						}),
+					],
+				}),
+			}),
 			GoAST.createMethodDeclaration({
 				identifier: GoAST.createIdentifier("InspectEntries"),
 				receiver: [receiver, eitherOfGeneric],
