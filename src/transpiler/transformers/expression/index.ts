@@ -14,11 +14,13 @@ import { arrowFunctionTransformer } from "./arrowFunction";
 import { globalIdentifierTransformer } from "./globals";
 import { conditionalExpressionTransformer } from "./conditional";
 import { templateExpressionTransformer } from "./template";
+import { awaitExpressionTransformer } from "./await";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
 		...duploJSExpressionTransformers.value,
 		...sharedExpressionTransformers.value,
+		awaitExpressionTransformer,
 		globalIdentifierTransformer,
 		identifierTransformer,
 		numericLiteralTransformer,

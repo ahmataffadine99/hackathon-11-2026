@@ -1,6 +1,7 @@
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import type * as DObject from "@duplojs/lang/object";
+import * as DPath from "@duplojs/lang/path";
 import * as DString from "@duplojs/lang/string";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
@@ -12,6 +13,31 @@ import type * as DArray from "@duplojs/lang/array";
 import { resolveDependencyFile, resolveReferenceModule, type DependencyReference, type DependencyFile, type ModuleReference, type ResolvedModuleReference } from "../resolvedReference";
 
 export type { DependencyReference } from "../resolvedReference";
+
+function createSourcePackageIdentifier(
+	filePath: string & DPath.Absolute,
+	projectWorkDirectory: string & DPath.Absolute,
+) {
+	const relativePath = DPath.computeRelative(projectWorkDirectory, filePath);
+	const pathWithoutExtension = DCommon.pipe(
+		relativePath,
+		DString.replace(/\.tsx?$/, ""),
+	);
+	const identifier = DCommon.pipe(
+		pathWithoutExtension,
+		DString.replace(
+			/[^a-zA-Z0-9]/g,
+			({ matchedValue }) => DCommon.pipe(
+				matchedValue.charCodeAt(0).toString(16),
+				DString.padStart(4, "0"),
+				(code) => `_${code}_`,
+			),
+		),
+		DString.prepend("Sourced_"),
+	);
+
+	return GoAST.createIdentifier(identifier);
+}
 
 export interface BuildContext {
 	readonly transpilation: TranspilationContext;
@@ -85,21 +111,23 @@ export function createBuildContext(
 		),
 		registerDependencyFile: ({ filePath }) => {
 			file.dependencyFiles.add(filePath);
-			return context.createSourceIdentifier(filePath);
+			return createSourcePackageIdentifier(filePath, transpilation.projectWorkDirectory);
 		},
 		generateIdentifier: () => GoAST.createIdentifier(`Generated_${transpilation.increment()}`),
-		createSourceIdentifier: (value) => DCommon.pipe(
-			value,
-			DString.replace(
-				/[^a-zA-Z0-9_]/g,
-				({ matchedValue }) => DCommon.pipe(
-					matchedValue.charCodeAt(0).toString(36),
-					DString.padStart(4, "0"),
+		createSourceIdentifier: (value) => value === file.currentFilePath
+			? createSourcePackageIdentifier(file.currentFilePath, transpilation.projectWorkDirectory)
+			: DCommon.pipe(
+				value,
+				DString.replace(
+					/[^a-zA-Z0-9_]/g,
+					({ matchedValue }) => DCommon.pipe(
+						matchedValue.charCodeAt(0).toString(36),
+						DString.padStart(4, "0"),
+					),
 				),
+				DString.prepend("Sourced_"),
+				GoAST.createIdentifier,
 			),
-			DString.prepend("Sourced_"),
-			GoAST.createIdentifier,
-		),
 	};
 
 	return context;

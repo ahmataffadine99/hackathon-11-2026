@@ -13,6 +13,10 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 			return context.notSupport();
 		}
 
+		if (node.asteriskToken) {
+			return context.error(node, "generator-function-not-supported");
+		}
+
 		const functionIdentifier = context.createSourceIdentifier(node.name.text);
 
 		const functionArguments = await DCommon.asyncPipe(
