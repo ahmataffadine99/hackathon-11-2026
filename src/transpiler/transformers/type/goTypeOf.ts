@@ -3,8 +3,8 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { type GoAST } from "@go";
 import { type NotfoundTransformer, type TransformationError, type TransformationSuccess } from "@transformer";
-import { type TsAST } from "@typescript";
-import { type Type } from "typescript/async";
+import { TsAST } from "@typescript";
+import { SymbolFlags, type Type } from "typescript/async";
 import { type BuildContext } from "../../context/build";
 import { typeTransformers } from ".";
 
@@ -47,4 +47,26 @@ export async function goTypeOf(
 	}
 
 	return DCommon.cast(goType);
+}
+
+/**
+ * Contrat Sprint 3 (D16) : type Go d'une EXPRESSION telle que traduite.
+ * Pour un identifiant de variable ou de paramètre : le type DÉCLARÉ (le type Go de
+ * la variable), pas le type rétréci par un `if` (après `isLeft(x)`, TypeScript voit
+ * `Fail`, mais la variable Go reste `Either[float64]`). Sinon : le type de l'expression.
+ */
+export async function goTypeOfExpression(
+	node: TsAST.Expression,
+	context: BuildContext,
+): Promise<TransformationSuccess<GoType> | TransformationError | NotfoundTransformer> {
+	const { typeChecker } = context.transpilation;
+	const symbol = TsAST.isIdentifier(node)
+		? await typeChecker.getSymbolAtLocation(node)
+		: undefined;
+
+	const type = symbol && (symbol.flags & SymbolFlags.Variable) !== 0
+		? await typeChecker.getTypeOfSymbol(symbol)
+		: await typeChecker.getTypeAtLocation(node);
+
+	return goTypeOf(type, node, context);
 }

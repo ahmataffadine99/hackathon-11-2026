@@ -1,127 +1,86 @@
-import * as DCommon from "@duplojs/lang/common";
+import * as DArray from "@duplojs/lang/array";
 import * as DEither from "@duplojs/lang/either";
+import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
-import type { Type } from "typescript/async";
-import type { BuildContext } from "../../../context/build";
 import { createTransformer, type Transformer } from "@transformer";
 import { expressionTransformers } from "../../expression";
-import { goTypeOf } from "../../type/goTypeOf";
-import { createFunctionValue } from "../application";
+import { goTypeOfExpression } from "../../type/goTypeOf";
+import {
+	callbackApplication,
+	createInlineFunctionValue,
+	type InlineFunction,
+} from "../application";
 
-async function coalesceValue(
-	value: GoAST.Expression,
-	valueType: Type,
-	site: TsAST.Node,
-	context: BuildContext,
-) {
-	const checker = context.transpilation.typeChecker;
-
-	if (await checker.isArrayType(valueType) || await checker.isTupleType(valueType)) {
-		return context.success({ result: value });
+/**
+ * DArray.coalescing(x) inliné d'après le TYPE GO de x (ADR-2, ADR-7) : un slice
+ * est renvoyé tel quel (même référence, comme `instanceof Array` en JS) ; toute
+ * autre valeur est enveloppée dans `[]T{x}`. Le test d'exécution disparaît.
+ */
+export const coalescingInlineFunction: InlineFunction = (argument) => {
+	if (DModeling.hasTagValue(argument.goType, "[node][type]slice")) {
+		return callbackApplication({
+			before: [],
+			expression: argument.expression,
+			goType: argument.goType,
+		});
 	}
 
-	const goType = await DCommon.asyncPipe(
-		goTypeOf(valueType, site, context),
-		DEither.unwrapRight,
-	);
+	const sliceType = GoAST.createSliceType({ elementType: argument.goType });
 
-	if (DEither.isLeft(goType)) {
-		return goType;
-	}
-
-	return context.success({
-		result: GoAST.createSliceLiteral({
-			typeReference: GoAST.createSliceType({
-				elementType: goType.result,
-			}),
-			elements: [value],
+	return callbackApplication({
+		before: [],
+		expression: GoAST.createSliceLiteral({
+			typeReference: sliceType,
+			elements: [argument.expression],
 		}),
+		goType: sliceType,
 	});
-}
-
-async function getCallbackParameterType(
-	site: TsAST.Expression,
-	context: BuildContext,
-) {
-	const checker = context.transpilation.typeChecker;
-	const contextualType = await checker.getContextualType(site);
-	const functionType = contextualType ?? await checker.getTypeAtLocation(site);
-	const [signature] = await functionType.getCallSignatures();
-
-	if (!signature) {
-		return context.error(site, "Could not resolve the callback signature for DArray.coalescing");
-	}
-
-	const [parameter] = await signature.getParameters();
-
-	if (!parameter) {
-		return context.error(site, "DArray.coalescing requires one callback parameter");
-	}
-
-	return checker.getTypeOfSymbolAtLocation(parameter, site);
-}
+};
 
 export const coalescingExpressionHandler: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context) => {
+		// En valeur (ni appelé, ni consommé par un handler) : eta-expansion (ADR-7).
 		if (!TsAST.isCallExpression(node)) {
-			if (!TsAST.isIdentifier(node) && !TsAST.isPropertyAccessExpression(node)) {
-				return context.notSupport();
-			}
-
-			return createFunctionValue({
-				site: node,
-				context,
-				body: async(parameters) => {
-					const [parameter] = parameters;
-
-					if (!parameter) {
-						return context.error(node, "DArray.coalescing requires one callback parameter");
-					}
-
-					const parameterType = await getCallbackParameterType(node, context);
-
-					if (DEither.isLeft(parameterType)) {
-						return parameterType;
-					}
-
-					return coalesceValue(parameter, parameterType, node, context);
-				},
-			});
-		}
-
-		if (node.arguments.length !== 1) {
-			return context.error(node, "DArray.coalescing requires exactly one non-spread argument");
+			return createInlineFunctionValue(node, coalescingInlineFunction, context);
 		}
 
 		const [argument] = node.arguments;
 
-		if (!argument || TsAST.isSpreadElement(argument)) {
+		if (!argument || !DArray.lengthEqual(node.arguments, 1) || TsAST.isSpreadElement(argument)) {
 			return context.error(node, "DArray.coalescing requires exactly one non-spread argument");
 		}
 
-		const expression = await DCommon.asyncPipe(
-			context.transform(argument, expressionTransformers.value),
-			DEither.unwrapRight,
-		);
+		const expression = DEither.unwrapRight(await context.transform(argument, expressionTransformers.value));
 
 		if (DEither.isLeft(expression)) {
 			return expression;
 		}
 
-		const argumentType = await context.transpilation.typeChecker.getTypeAtLocation(argument);
-		const coalesced = await DCommon.asyncPipe(
-			coalesceValue(expression.result, argumentType, argument, context),
-			DEither.unwrapRight,
+		const goType = DEither.unwrapRight(await goTypeOfExpression(argument, context));
+
+		if (DEither.isLeft(goType)) {
+			return goType;
+		}
+
+		const application = DEither.unwrapRight(
+			await coalescingInlineFunction(
+				{
+					expression: expression.result,
+					goType: goType.result,
+				},
+				node,
+				context,
+			),
 		);
 
-		if (DEither.isLeft(coalesced)) {
-			return coalesced;
+		if (DEither.isLeft(application)) {
+			return application;
 		}
 
 		return context.success({
-			before: expression.before,
-			result: coalesced.result,
+			before: [...expression.before, ...application.before],
+			result: application.expression,
 		});
 	},
 );
