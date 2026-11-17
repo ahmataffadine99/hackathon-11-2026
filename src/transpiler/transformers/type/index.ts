@@ -9,6 +9,7 @@ import { parenthesizedTypeTransformer } from "./parenthesized";
 import { unionTypeTransformer } from "./union";
 import { intersectionTypeTransformer } from "./intersection";
 import { functionTypeTransformer } from "./function";
+import { promiseTypeTransformer } from "./promise";
 import { stringTypeTransformer } from "./string";
 import { booleanTypeTransformer } from "./boolean";
 import { arrayTypeTransformer } from "./array";
@@ -21,6 +22,7 @@ export const typeTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Type | GoAST.TypeReference>[] => [
 		unionTypeTransformer,
 		intersectionTypeTransformer,
+		promiseTypeTransformer,
 		...duploJSTypeTransformers.value,
 		...sharedTypeTransformers.value,
 		parenthesizedTypeTransformer,
