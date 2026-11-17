@@ -12,6 +12,7 @@ import { sharedExpressionTransformers } from "../shared";
 import { binaryExpressionTransformer } from "./binary";
 import { arrowFunctionTransformer } from "./arrowFunction";
 import { globalIdentifierTransformer } from "./globals";
+import { conditionalExpressionTransformer } from "./conditional";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
@@ -26,5 +27,6 @@ export const expressionTransformers = DCommon.memo(
 		prefixUnaryExpressionTransformer,
 		binaryExpressionTransformer,
 		arrowFunctionTransformer,
+		conditionalExpressionTransformer,
 	],
 );
