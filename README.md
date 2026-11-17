@@ -17,11 +17,16 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 
 | Exercice | État | Fiche |
 |---|---|---|
-| 00 (exemple) | ✅ sortie Go identique à TypeScript | [docs/exercises/00.md](docs/exercises/00.md) |
-| 01 | 🚧 Sprint 1 en cours (types Either, `const`, `if`, `isRight`, `print`) ; 9 variantes prêtes | [docs/exercises/01.md](docs/exercises/01.md) |
-| 02 à 10 | ⏳ à venir | – |
+| 00 (exemple) | ✅ sortie Go identique à TypeScript | [00.md](docs/exercises/00.md) |
+| 01 | 🟠 ✅ avec le correctif d'intégration I1 (en attente de merge) ; 💥 sur `main` (`isRight` non branché) | [01.md](docs/exercises/01.md) |
+| 02 | 🚧 Sprint 2 : `whenIsRight`, `coalescing` en valeur, union `Plain` (ADR-2) | [02.md](docs/exercises/02.md) |
+| 03 | 🚧 Sprint 2 : `pipe`, forme curryfiée en `func` literal (ADR-3) | [03.md](docs/exercises/03.md) |
+| 04 | 🚧 Sprint 2 : `-1` (retours inférés et `fail()` déjà fonctionnels) | [04.md](docs/exercises/04.md) |
+| 05 à 10 | ⏳ à venir | – |
 
-**0/10 exercices validés** (état au 17/11, `./scripts/check-all.sh`).
+**0/10 exercices validés sur `main`** (1/10 avec I1). Variantes : 19 au total, dont 0 passent sur `main` (5 avec I1). État au 17/11, `./scripts/check-all.sh` et `--variations`.
+
+Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de régression (voir [docs/setup.md §8](docs/setup.md#8-contrôler-une-pr-avant-de-la-merger-règle-de-merge)).
 
 ## Structure
 
@@ -32,7 +37,7 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 | `src/go/` | AST Go et printer |
 | `projects/00` à `projects/10` | Exercices (00 = exemple résolu) |
 | `variations/` | Variantes des exercices pour tester la généricité des stratégies ([README](variations/README.md)) |
-| `scripts/` | Boucle de validation (`check.sh`, `check-all.sh`), exécution Docker (`docker-check.sh`, `docker-check.ps1`) |
+| `scripts/` | Boucle de validation (`check.sh`, `check-all.sh`), contrôle de merge (`compare-main.sh`), exécution Docker (`docker-check.sh`, `docker-check.ps1`) |
 | `docs/` | Installation, sémantique DuploJS, décisions (ADR), fiches par exercice |
 
 ## Reproduire
