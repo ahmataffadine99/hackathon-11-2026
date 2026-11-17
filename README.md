@@ -29,7 +29,18 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 | 09 | ✅ `group` et `Either2` lorsque les côtés diffèrent (ADR-12) | [09.md](docs/exercises/09.md) |
 | 10 | ⏳ Sprint 5 : asynchronisme | – |
 
-**10/11 cibles (00 à 09) identiques à TypeScript** après le Sprint 4. Les variantes des exercices 01 à 09 sont suivies dans [variations/README.md](variations/README.md) ; l'écart connu `03-curried-stored` est une limite documentée (voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). Le benchmark `[3]float64` / `[][]float64` est dans [`research/tuples/`](research/tuples/).
+**10/11 cibles (00 à 09) identiques à TypeScript** après le Sprint 4 ; variantes **37/38**. Les variantes des exercices 01 à 09 sont suivies dans [variations/README.md](variations/README.md) ; l'écart connu `03-curried-stored` est une limite documentée (voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). Le benchmark `[3]float64` / `[][]float64` est dans [`research/tuples/`](research/tuples/).
+
+## Documents clés
+
+| Document | Contenu |
+|---|---|
+| [Synthèse](docs/synthese.md) | La réponse à la question du sujet, la démarche, les décisions clés, les résultats et les limites |
+| [Décisions (ADR)](docs/decisions/) | ADR-1 (`Either` par valeur), ADR-2 (unions, `Plain`), ADR-3 (fonctions en valeur), ADR-7 (fonctions fléchées et génériques en valeur), ADR-8 (ternaire, court-circuit), ADR-9 (`matchInformation`), ADR-10 (`rightPipe`), ADR-11 (tuples), ADR-12 (`group`, `Either2`) |
+| [Fiches d'exercice](docs/exercises/) | Problèmes, stratégie, Go produit, résultats observés et limites, de 00 à 09 |
+| [Mesures](docs/measures.md) | Node contre Go de bout en bout, échappements, micro-benchmarks ([`research/`](research/)) |
+| [Sémantique DuploJS](docs/duplojs-semantics.md) | Comportement de référence vérifié à l'exécution |
+| [Soutenance](docs/soutenance.md) | Trame minutée, démo, questions probables |
 
 Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de régression (voir [docs/setup.md §8](docs/setup.md#8-contrôler-une-pr-avant-de-la-merger-règle-de-merge)).
 
@@ -42,8 +53,9 @@ Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de 
 | `src/go/` | AST Go et printer |
 | `projects/00` à `projects/10` | Exercices (00 = exemple résolu) |
 | `variations/` | Variantes des exercices pour tester la généricité des stratégies ([README](variations/README.md)) |
-| `scripts/` | Boucle de validation (`check.sh`, `check-all.sh`), contrôle de merge (`compare-main.sh`), exécution Docker (`docker-check.sh`, `docker-check.ps1`) |
-| `docs/` | Installation, sémantique DuploJS, décisions (ADR), fiches par exercice |
+| `scripts/` | Boucle de validation (`check.sh`, `check-all.sh`), contrôle de merge (`compare-main.sh`), exécution Docker (`docker-check.sh`, `docker-check.ps1`), archive de remise (`make-zip.sh`) |
+| `research/` | Mesures et prototypes : représentations d'`Either`, tuples, asynchronisme, mesures de bout en bout |
+| `docs/` | Installation, sémantique DuploJS, décisions (ADR), fiches par exercice, synthèse, mesures, soutenance |
 
 ## Reproduire
 
