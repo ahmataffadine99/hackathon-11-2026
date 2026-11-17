@@ -13,6 +13,8 @@ import { whenIsRightExpressionHandler, whenIsRightOtherwiseExpressionHandler } f
 import { leftExpressionHandler } from "./left";
 import { matchInformationExpressionHandler } from "./matchInformation";
 import { eitherTypeHandler, eitherTypeNames, type EitherTypeMember } from "./types";
+import { rightPipeExpressionHandler } from "./rightPipe";
+import { groupExpressionHandler } from "./group";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -48,6 +50,14 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 					node,
 					context,
 				),
+			),
+			DPattern.match(
+				DCommon.equal("rightPipe"),
+				() => rightPipeExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("group"),
+				() => groupExpressionHandler(node, context),
 			),
 			DPattern.match(
 				DCommon.equal("fail"),

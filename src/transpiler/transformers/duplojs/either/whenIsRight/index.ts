@@ -18,7 +18,12 @@ import {
 	type TypedExpression,
 } from "../../application";
 import { coerceGoExpression, eitherVariantNames } from "../coerce";
-import { createEitherGoType, getEitherValueGoType, unionGoTypes } from "../goType";
+import {
+	createEitherGoType,
+	getEitherValueAccess,
+	getEitherValueGoType,
+	unionGoTypes,
+} from "../goType";
 import { eitherDependency } from "../sharedDependency";
 
 // DEither.whenIsRight(e, f) / whenIsRight(f) et DEither.whenIsRightOtherwise(e, f, g) /
@@ -31,7 +36,6 @@ import { eitherDependency } from "../sharedDependency";
 // Un callback n'est évalué que dans sa branche.
 
 const isRightMethodIdentifier = GoAST.createIdentifier("IsRight");
-const valueFieldIdentifier = GoAST.createIdentifier("Value");
 
 type Kind = "whenIsRight" | "whenIsRightOtherwise";
 
@@ -88,9 +92,9 @@ async function buildBranches(params: {
 }): Promise<CallbackApplicationResult> {
 	const { input, onRight, onOther, site, context } = params;
 
-	const valueGoType = DEither.unwrapRight(getEitherValueGoType(input.goType));
+	const valueAccess = DEither.unwrapRight(getEitherValueAccess(input.goType));
 
-	if (DEither.isLeft(valueGoType)) {
+	if (DEither.isLeft(valueAccess)) {
 		return context.error(site, "duplojs-either-whenisright-input-is-not-an-either");
 	}
 
@@ -107,9 +111,9 @@ async function buildBranches(params: {
 				{
 					expression: GoAST.createSelectorExpression({
 						target: input.expression,
-						identifier: valueFieldIdentifier,
+						identifier: valueAccess.field,
 					}),
-					goType: valueGoType,
+					goType: valueAccess.valueType,
 				},
 			]),
 		)

@@ -54,3 +54,22 @@ Les exercices officiels (`projects/`) ne couvrent qu'un exemple par problème. C
 | `06-match-curried` | `matchInformation` **curryfié** dans un `pipe`, sur un succès puis sur un `Left` porteur d'une valeur ; gabarit de chaîne | `5`, `trop grand : 500` |
 | `06-ternary-lazy` | Ternaire : seule la branche choisie est évaluée (effet observable dans les deux branches) | `évalué : oui`, `oui`, `évalué : non`, `non`, `30` |
 | `06-short-circuit` | `&&` et `\|\|` court-circuitent (D2) : l'opérande de droite, avec effet observable, n'est évalué que si nécessaire | `a`, `c`, `e`, `f` évalués ; `b` et `d` jamais |
+
+## Exercices 07 à 09
+
+| Variante | Ce qu'elle vérifie | Sortie de référence |
+|---|---|---|
+| `07-three-steps` | Trois étapes de `rightPipe`; la deuxième renvoie un gauche et la troisième, qui imprime, n'est pas appelée | `Left("second-step", 3)` |
+| `07-plain-step` | Deux étapes nues puis enveloppe finale unique en `Success` | `Success(10)` |
+| `07-left-input` | Une entrée déjà gauche court-circuite la première callback | `Left("already-stopped", 7)` ; aucun message de callback |
+| `07-division` | Division flottante par zéro, y compris le signe | `Infinity`, `-Infinity` |
+| `08-const-destructure` | Déstructuration locale `const [a, b] = pair` | `13` |
+| `08-unused-binding` | Un paramètre jamais lu n'est pas lié ; un initialiseur à effet est exécuté même si tous ses noms sont inutilisés | `source still evaluated`, `[ 11 ]` |
+| `08-empty-inputs` | `map` sur un tableau vide de tuples contextualisé | `[]` |
+| `08-top-level-destructure` | Déstructuration au niveau fichier : variables de package | `14` |
+| `09-group-all-right` | Tous les calculs réussissent ; les valeurs droites sont groupées | `Success([ 2, 3 ])` |
+| `09-group-first-left` | Deux gauches : le premier est renvoyé tel quel | `Left("first", 7)` |
+| `09-group-empty` | Groupe vide | `Success([])` |
+
+Ces onze variantes passent `tsc --noEmit`, la transpilation, `go vet`, `go run`
+et la comparaison de sortie avec `tsx`.

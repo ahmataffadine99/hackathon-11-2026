@@ -13,8 +13,17 @@ import { type TsAST } from "@typescript";
 import { type Type } from "typescript/async";
 import { type BuildContext } from "../../../context/build";
 import { goTypeOf, type GoType } from "../../type/goTypeOf";
-import { getEitherValueGoType, isEitherNoValueGoType } from "./goType";
-import { eitherDependency, eitherPlainFunctionIdentifier, eitherRetypeFunctionIdentifier } from "./sharedDependency";
+import {
+	getEither2GoTypes,
+	getEitherValueGoType,
+	isEitherNoValueGoType,
+} from "./goType";
+import {
+	either2FromLeftFunctionIdentifier,
+	eitherDependency,
+	eitherPlainFunctionIdentifier,
+	eitherRetypeFunctionIdentifier,
+} from "./sharedDependency";
 
 // expression : expression Go déjà évaluée (identifiant ou temporaire de préférence) ;
 // from : type TS de la valeur ; to : type TS attendu à l'emplacement (retour,
@@ -95,6 +104,37 @@ export async function coerceGoExpression(
 
 	if (GoPrinter.renderNode(fromGoType) === GoPrinter.renderNode(toGoType)) {
 		return context.success({ result: expression });
+	}
+
+	const toEither2Types = DEither.unwrapRight(getEither2GoTypes(toGoType));
+
+	if (!DEither.isLeft(toEither2Types)) {
+		const fromEitherTypes = DEither.unwrapRight(getEitherValueGoType(fromGoType));
+
+		if (
+			!DEither.isLeft(fromEitherTypes)
+			&& GoPrinter.renderNode(fromEitherTypes) === GoPrinter.renderNode(toEither2Types.leftType)
+		) {
+			const packageName = context.registerSharedDependency(eitherDependency.value);
+
+			return context.success({
+				result: GoAST.createCallExpression({
+					callee: GoAST.createInstantiationExpression({
+						target: GoAST.createSelectorExpression({
+							target: packageName,
+							identifier: either2FromLeftFunctionIdentifier,
+						}),
+						typeArguments: DCommon.cast([
+							toEither2Types.leftType,
+							toEither2Types.rightType,
+						]),
+					}),
+					arguments: [expression],
+				}),
+			});
+		}
+
+		return context.notSupport();
 	}
 
 	const toValueType = DEither.unwrapRight(getEitherValueGoType(toGoType));

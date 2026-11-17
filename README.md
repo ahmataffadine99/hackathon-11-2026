@@ -24,9 +24,12 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 | 04 | ✅ retours multiples inférés, `fail()`, `-1` | [04.md](docs/exercises/04.md) |
 | 05 | ✅ `whenIsRightOtherwise`, fonction fléchée, `map`, `DString.to` (ADR-7) | [05.md](docs/exercises/05.md) |
 | 06 | ✅ `left`, ternaire et `\|\|` (ADR-8), `matchInformation` (ADR-9) | [06.md](docs/exercises/06.md) |
-| 07 à 10 | ⏳ Sprints 4 et 5 | – |
+| 07 | ✅ `rightPipe` inliné et avec court-circuit (ADR-10) | [07.md](docs/exercises/07.md) |
+| 08 | ✅ tuples homogènes et déstructuration (ADR-11) | [08.md](docs/exercises/08.md) |
+| 09 | ✅ `group` et `Either2` lorsque les côtés diffèrent (ADR-12) | [09.md](docs/exercises/09.md) |
+| 10 | ⏳ Sprint 5 : asynchronisme | – |
 
-**7/11 cibles (00 à 06) identiques à TypeScript** sur la branche `sprint3/full`. Variantes : **26/27** ; l'écart est une limite documentée (`03-curried-stored`, voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). État au 17/11, `./scripts/check-all.sh` et `--variations`.
+**10/11 cibles (00 à 09) identiques à TypeScript** après le Sprint 4. Les variantes des exercices 01 à 09 sont suivies dans [variations/README.md](variations/README.md) ; l'écart connu `03-curried-stored` est une limite documentée (voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). Le benchmark `[3]float64` / `[][]float64` est dans [`research/tuples/`](research/tuples/).
 
 Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de régression (voir [docs/setup.md §8](docs/setup.md#8-contrôler-une-pr-avant-de-la-merger-règle-de-merge)).
 

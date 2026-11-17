@@ -8,6 +8,7 @@ import { TsAST } from "@typescript";
 import { goTypeOf } from "../type/goTypeOf";
 import { blockStatementTransformer } from "../statement/block";
 import { expressionTransformers } from ".";
+import { bindArrayPattern } from "./bindArrayPattern";
 
 /**
  * Fonction fléchée (ADR-7) : `func` literal Go.
@@ -32,13 +33,19 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 		const { typeChecker } = context.transpilation;
 		const signature = await typeChecker.getSignatureFromDeclaration(node);
 
-		const functionArguments = await DCommon.asyncPipe(
+		const transformedParameters = await DCommon.asyncPipe(
 			node.parameters,
 			DGenerator.asyncReduce(
-				DGenerator.reduceFrom<readonly GoAST.FunctionArgument[]>([]),
+				DGenerator.reduceFrom<{
+					arguments: readonly GoAST.FunctionArgument[];
+					bindings: readonly GoAST.Statement[];
+				}>({
+					arguments: [],
+					bindings: [],
+				}),
 				async({ item, index, lastValue, next, exit }) => {
-					if (!TsAST.isIdentifier(item.name) || item.dotDotDotToken || item.initializer) {
-						return exit(context.error(item, "only-simple-identifier-parameters-are-supported"));
+					if (item.dotDotDotToken || item.initializer) {
+						return exit(context.error(item, "rest-or-default-parameters-are-not-supported"));
 					}
 
 					const goType = DEither.unwrapRight(
@@ -49,22 +56,55 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 						return exit(goType);
 					}
 
-					return next(
-						DArray.push(
-							lastValue,
+					if (TsAST.isIdentifier(item.name)) {
+						return next({
+							...lastValue,
+							arguments: DArray.push(
+								lastValue.arguments,
+								GoAST.createFunctionArgument({
+									identifier: context.createSourceIdentifier(item.name.text),
+									type: goType.result,
+								}),
+							),
+						});
+					}
+
+					if (!TsAST.isArrayBindingPattern(item.name)) {
+						return exit(context.error(item.name, "object-destructuring-parameters-are-not-supported"));
+					}
+
+					const parameterIdentifier = context.generateIdentifier();
+					const bindings = DEither.unwrapRight(
+						await bindArrayPattern({
+							pattern: item.name,
+							source: parameterIdentifier,
+							sourceGoType: goType.result,
+							context,
+						}),
+					);
+
+					if (DEither.isLeft(bindings)) {
+						return exit(bindings);
+					}
+
+					return next({
+						arguments: DArray.push(
+							lastValue.arguments,
 							GoAST.createFunctionArgument({
-								identifier: context.createSourceIdentifier(item.name.text),
+								identifier: parameterIdentifier,
 								type: goType.result,
 							}),
 						),
-					);
+						bindings: DArray.concat(lastValue.bindings, bindings),
+					});
 				},
 			),
 		);
 
-		if (DEither.isLeft(functionArguments)) {
-			return functionArguments;
+		if (DEither.isLeft(transformedParameters)) {
+			return transformedParameters;
 		}
+		const { arguments: functionArguments, bindings } = transformedParameters;
 
 		const returnGoType = DEither.unwrapRight(
 			await goTypeOf(await typeChecker.getReturnTypeOfSignature(signature), node, context),
@@ -88,7 +128,7 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 					arguments: functionArguments,
 					returnTypes: [returnGoType.result],
 					body: GoAST.createBlockStatement({
-						statements: [...block.before, ...block.result.statements],
+						statements: [...bindings, ...block.before, ...block.result.statements],
 					}),
 				}),
 			});
@@ -106,6 +146,7 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 				returnTypes: [returnGoType.result],
 				body: GoAST.createBlockStatement({
 					statements: [
+						...bindings,
 						...expression.before,
 						GoAST.createReturnStatement({ values: [expression.result] }),
 					],
