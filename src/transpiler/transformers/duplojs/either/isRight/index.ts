@@ -68,9 +68,3 @@ export async function isLeftExpressionHandler(
 ): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
 	return booleanMethodCallHandler(node, context, isLeftMethodIdentifier);
 }
-
-// Pas encore branché dans ../index.ts (routeur de la Personne 4) : il
-// expose aujourd'hui uniquement "success" (Sprint 0) et la représentation
-// Either de l'ADR-1 n'est pas encore implémentée (pas de méthode IsRight/
-// IsLeft à appeler). À brancher avec DPattern.match("isRight"/"isLeft")
-// après rebase sur sa branche, une fois mergée.

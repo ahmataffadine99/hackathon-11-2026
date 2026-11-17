@@ -9,6 +9,7 @@ import * as DPattern from "@duplojs/lang/pattern";
 import { type BuildContext } from "../../../context/build";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
+import { isRightExpressionHandler, isLeftExpressionHandler } from "./isRight";
 import { eitherTypeHandler, eitherTypeNames, type EitherTypeMember } from "./types";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
@@ -49,6 +50,20 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("fail"),
 				() => failExpressionHandler(
+					node,
+					context,
+				),
+			),
+			DPattern.match(
+				DCommon.equal("isRight"),
+				() => isRightExpressionHandler(
+					node,
+					context,
+				),
+			),
+			DPattern.match(
+				DCommon.equal("isLeft"),
+				() => isLeftExpressionHandler(
 					node,
 					context,
 				),

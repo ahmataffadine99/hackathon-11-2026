@@ -110,10 +110,10 @@ export function build(
 				}
 
 				const file = DCommon.pipe(
-					DGenerator.concat(
-						defaultSharedDependencies.value,
-						context.sharedDependencies,
-					),
+					new Set([
+						...defaultSharedDependencies.value,
+						...context.sharedDependencies,
+					]),
 					DGenerator.reduce(
 						DGenerator.reduceFrom<CreateFileParams>({
 							packageName: sharedDependencyPackageName,
