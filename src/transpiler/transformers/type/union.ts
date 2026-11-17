@@ -68,21 +68,19 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 						return exit(context.error(item, "un-support-before-on-union-member-type"));
 					}
 
-					let variantName: string | undefined;
-
-					if (TsAST.isTypeReferenceNode(item) || TsAST.isImportTypeNode(item)) {
-						const moduleReference = DEither.unwrapRight(
+					const moduleReference = TsAST.isTypeReferenceNode(item) || TsAST.isImportTypeNode(item)
+						? DEither.unwrapRight(
 							await context.resolveReferenceModule(
 								TsAST.isTypeReferenceNode(item) ? item.typeName : item,
 								"@duplojs/lang",
 								/^dist\/either\//,
 							),
-						);
+						)
+						: undefined;
 
-						variantName = DEither.isLeft(moduleReference)
-							? undefined
-							: moduleReference.symbol.name;
-					}
+					const variantName = moduleReference && !DEither.isLeft(moduleReference)
+						? moduleReference.symbol.name
+						: undefined;
 
 					return next(DArray.push(lastValue, {
 						goType: memberType.result,
