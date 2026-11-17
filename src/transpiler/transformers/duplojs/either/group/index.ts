@@ -1,3 +1,4 @@
+import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
@@ -22,6 +23,7 @@ const isLeftIdentifier = GoAST.createIdentifier("IsLeft");
 export async function groupExpressionHandler(
 	node: TsAST.Node,
 	context: BuildContext,
+	allowFactories = false,
 ) {
 	if (!TsAST.isCallExpression(node) || node.arguments.length !== 1) {
 		return context.error(node, "duplojs-either-group-requires-exactly-one-array");
@@ -48,7 +50,12 @@ export async function groupExpressionHandler(
 	}
 
 	if (!DModeling.hasTagValue(arrayGoType.result, "[node][type]slice")) {
-		return context.error(arrayNode, "duplojs-either-group-input-is-not-a-slice");
+		return context.error(
+			arrayNode,
+			allowFactories
+				? "duplojs-either-async-group-only-supports-arrays"
+				: "duplojs-either-group-input-is-not-a-slice",
+		);
 	}
 
 	const resultGoType = DEither.unwrapRight(
@@ -65,7 +72,24 @@ export async function groupExpressionHandler(
 		return context.error(node, "duplojs-either-group-result-is-not-either2");
 	}
 
-	const elementType = arrayGoType.result.elementType;
+	let elementType = arrayGoType.result.elementType;
+	let isFactory = false;
+
+	if (allowFactories && DModeling.hasTagValue(elementType, "[node][type]function")) {
+		if (elementType.arguments.length !== 0 || !DArray.lengthEqual(elementType.returnTypes, 1)) {
+			return context.error(arrayNode, "duplojs-either-async-group-factory-must-take-no-arguments");
+		}
+
+		const returnType = DArray.first(elementType.returnTypes);
+
+		if (!returnType) {
+			return context.error(arrayNode, "duplojs-either-async-group-factory-must-return-one-value");
+		}
+
+		elementType = returnType;
+		isFactory = true;
+	}
+
 	const valueAccess = DEither.unwrapRight(getEitherValueAccess(elementType));
 
 	if (DEither.isLeft(valueAccess)) {
@@ -85,6 +109,7 @@ export async function groupExpressionHandler(
 	const outputIdentifier = context.generateIdentifier();
 	const resultIdentifier = context.generateIdentifier();
 	const elementIdentifier = context.generateIdentifier();
+	const valueIdentifier = isFactory ? context.generateIdentifier() : elementIdentifier;
 	const hasLeftIdentifier = context.generateIdentifier();
 	const outputType = GoAST.createSliceType({
 		elementType: resultTypes.rightType.elementType,
@@ -98,7 +123,7 @@ export async function groupExpressionHandler(
 			}),
 			typeArguments: DCommon.cast([resultTypes.leftType, resultTypes.rightType]),
 		}),
-		arguments: [elementIdentifier],
+		arguments: [valueIdentifier],
 	});
 	const successConstructor = GoAST.createCallExpression({
 		callee: GoAST.createInstantiationExpression({
@@ -110,6 +135,15 @@ export async function groupExpressionHandler(
 		}),
 		arguments: [outputIdentifier],
 	});
+	const elementValue = isFactory
+		? GoAST.createShortVariableDeclarationStatement({
+			identifier: valueIdentifier,
+			initializer: GoAST.createCallExpression({
+				callee: elementIdentifier,
+				arguments: [],
+			}),
+		})
+		: undefined;
 
 	return context.success({
 		before: [
@@ -148,10 +182,11 @@ export async function groupExpressionHandler(
 				expression: arrayIdentifier,
 				body: GoAST.createBlockStatement({
 					statements: [
+						...(elementValue ? [elementValue] : []),
 						GoAST.createIfStatement({
 							condition: GoAST.createCallExpression({
 								callee: GoAST.createSelectorExpression({
-									target: elementIdentifier,
+									target: valueIdentifier,
 									identifier: isLeftIdentifier,
 								}),
 								arguments: [],
@@ -178,7 +213,7 @@ export async function groupExpressionHandler(
 									arguments: DCommon.cast([
 										outputIdentifier,
 										GoAST.createSelectorExpression({
-											target: elementIdentifier,
+											target: valueIdentifier,
 											identifier: valueAccess.field,
 										}),
 									]),
@@ -205,4 +240,11 @@ export async function groupExpressionHandler(
 		],
 		result: resultIdentifier,
 	});
+}
+
+export function asyncGroupExpressionHandler(
+	node: TsAST.Node,
+	context: BuildContext,
+) {
+	return groupExpressionHandler(node, context, true);
 }
