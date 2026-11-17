@@ -2,6 +2,7 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DArray from "@duplojs/lang/array";
 import { GoAST } from "@go";
 import { createSharedDependency } from "@transformer";
+import { inspectEntryTypeIdentifier } from "../../../sharedDependency/defaults/inspect";
 
 // Représentation A de l'ADR-1 (docs/decisions/ADR-1-either.md) :
 // Success<T>, Fail, Left<I, T>, Right<I, T> et leurs unions partagent Either[V].
@@ -17,10 +18,6 @@ export const eitherKindIdentifiers = {
 	success: GoAST.createIdentifier("EitherKindSuccess"),
 	fail: GoAST.createIdentifier("EitherKindFail"),
 } as const;
-
-// TEMPORAIRE : InspectEntry appartient au contrat de la dépendance par défaut
-// « inspect » de la Personne 3. À supprimer d'ici au rebase sur sa branche.
-export const temporaryInspectEntryIdentifier = GoAST.createIdentifier("InspectEntry");
 
 const eitherKeyPrefix = "@duplojs/lang/kind/@DuplojsLangEither/";
 
@@ -86,7 +83,7 @@ export const eitherDependency = DCommon.memo(() => {
 	});
 
 	const inspectEntry = (key: string, value: GoAST.Expression) => GoAST.createStructLiteral({
-		typeReference: temporaryInspectEntryIdentifier,
+		typeReference: inspectEntryTypeIdentifier,
 		elements: [
 			GoAST.createKeyedElement({
 				key: inspectFieldIdentifiers.key,
@@ -119,7 +116,7 @@ export const eitherDependency = DCommon.memo(() => {
 		values: [
 			GoAST.createSliceLiteral({
 				typeReference: GoAST.createSliceType({
-					elementType: temporaryInspectEntryIdentifier,
+					elementType: inspectEntryTypeIdentifier,
 				}),
 				elements: [
 					inspectEntry(side, nullLiteral),
@@ -255,7 +252,7 @@ export const eitherDependency = DCommon.memo(() => {
 				arguments: [],
 				returnTypes: [
 					GoAST.createSliceType({
-						elementType: temporaryInspectEntryIdentifier,
+						elementType: inspectEntryTypeIdentifier,
 					}),
 				],
 				body: GoAST.createBlockStatement({
@@ -298,22 +295,6 @@ export const eitherDependency = DCommon.memo(() => {
 								],
 							}),
 							casesAfterDefault: [],
-						}),
-					],
-				}),
-			}),
-			// TEMPORAIRE (voir temporaryInspectEntryIdentifier).
-			GoAST.createTypeDefinition({
-				identifier: temporaryInspectEntryIdentifier,
-				type: GoAST.createStructType({
-					fields: [
-						GoAST.createStructField({
-							identifier: inspectFieldIdentifiers.key,
-							typeReference: GoAST.builtinTypeReferences.string,
-						}),
-						GoAST.createStructField({
-							identifier: inspectFieldIdentifiers.value,
-							typeReference: GoAST.builtinTypeReferences.any,
 						}),
 					],
 				}),
