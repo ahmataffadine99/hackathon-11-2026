@@ -4,6 +4,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
+import * as DGenerator from "@duplojs/lang/generator";
 import { statementTransformers } from ".";
 
 export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = createTransformer(
@@ -14,25 +15,23 @@ export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = crea
 
 		const statements = await DCommon.asyncPipe(
 			node.statements,
-			DArray.map(
-				async(tsArgument) => DCommon.asyncPipe(
-					context.transform(tsArgument, statementTransformers.value),
-					DEither.unwrapRight,
-				),
-			),
-			DCommon.promiseAll,
-			DArray.reduce(
-				DArray.reduceFrom<readonly GoAST.Statement[]>([]),
-				({ element, lastValue, next, exit }) => {
-					if (DEither.isLeft(element)) {
-						return exit(element);
+			DGenerator.asyncReduce(
+				DGenerator.reduceFrom<readonly GoAST.Statement[]>([]),
+				async({ item, lastValue, next, exit }) => {
+					const statement = await DCommon.asyncPipe(
+						context.transform(item, statementTransformers.value),
+						DEither.unwrapRight,
+					);
+
+					if (DEither.isLeft(statement)) {
+						return exit(statement);
 					}
 
 					return next(
 						DArray.concat(
 							lastValue,
-							element.before,
-							[element.result],
+							statement.before,
+							[statement.result],
 						),
 					);
 				},
