@@ -6,13 +6,27 @@ import { sharedTypeTransformers } from "../shared";
 import { float64TypeTransformer } from "./float";
 import { numberLiteralTypeTransformer } from "./numberLiteral";
 import { parenthesizedTypeTransformer } from "./parenthesized";
+import { unionTypeTransformer } from "./union";
+import { stringTypeTransformer } from "./string";
+import { booleanTypeTransformer } from "./boolean";
+import { arrayTypeTransformer } from "./array";
+import { homogeneousTupleTypeTransformer } from "./tuple";
+import { readonlyTypeTransformer } from "./readonly";
+
+export * from "./goTypeOf";
 
 export const typeTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Type | GoAST.TypeReference>[] => [
+		unionTypeTransformer,
 		...duploJSTypeTransformers.value,
 		...sharedTypeTransformers.value,
 		parenthesizedTypeTransformer,
+		readonlyTypeTransformer,
 		float64TypeTransformer,
 		numberLiteralTypeTransformer,
+		stringTypeTransformer,
+		booleanTypeTransformer,
+		arrayTypeTransformer,
+		homogeneousTupleTypeTransformer,
 	],
 );

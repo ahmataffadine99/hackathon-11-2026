@@ -1,7 +1,6 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import * as DGenerator from "@duplojs/lang/generator";
 import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
@@ -10,7 +9,6 @@ import { type BuildContext } from "../../../context/build";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
 import { isRightExpressionHandler, isLeftExpressionHandler } from "./isRight";
-import { whenIsRightExpressionHandler } from "./whenIsRight";
 import { eitherTypeHandler, eitherTypeNames, type EitherTypeMember } from "./types";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
@@ -55,27 +53,8 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 					context,
 				),
 			),
-			DPattern.match(
-				DCommon.equal("isRight"),
-				() => isRightExpressionHandler(
-					node,
-					context,
-				),
-			),
-			DPattern.match(
-				DCommon.equal("isLeft"),
-				() => isLeftExpressionHandler(
-					node,
-					context,
-				),
-			),
-			DPattern.match(
-				DCommon.equal("whenIsRight"),
-				() => whenIsRightExpressionHandler(
-					node,
-					context,
-				),
-			),
+			DPattern.match(DCommon.equal("isRight"), () => isRightExpressionHandler(node, context)),
+			DPattern.match(DCommon.equal("isLeft"), () => isLeftExpressionHandler(node, context)),
 			DPattern.otherwise(
 				() => context.error(node),
 			),
@@ -122,34 +101,18 @@ async function resolveEitherTypeMember(
 
 export const duploJSEitherTypeTransformer: Transformer<GoAST.GenericTypeReference> = createTransformer(
 	async(node, context) => {
+		// Les unions sont regroupées par type/union.ts (ADR-2) ; ce routeur ne
+		// traite qu'un type Either à la fois.
 		if (!TsAST.isTypeNode(node)) {
 			return context.notSupport();
 		}
 
-		const memberNodes = TsAST.isUnionTypeNode(node)
-			? node.types
-			: [node];
+		const member = DEither.unwrapRight(await resolveEitherTypeMember(node, context));
 
-		// Tous les membres doivent appartenir au domaine either ; sinon l'union
-		// relève d'une autre représentation (ADR-2) et on laisse la main.
-		const members = await DCommon.asyncPipe(
-			memberNodes,
-			DGenerator.asyncReduce(
-				DGenerator.reduceFrom<readonly EitherTypeMember[]>([]),
-				async({ item, lastValue, next, exit }) => {
-					const member = DEither.unwrapRight(await resolveEitherTypeMember(item, context));
-
-					return DEither.isLeft(member)
-						? exit(undefined)
-						: next(DArray.push(lastValue, member));
-				},
-			),
-		);
-
-		if (!members) {
+		if (DEither.isLeft(member)) {
 			return context.notSupport();
 		}
 
-		return eitherTypeHandler(node, members, context);
+		return eitherTypeHandler(member, context);
 	},
 );
