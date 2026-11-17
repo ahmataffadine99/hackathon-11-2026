@@ -13,6 +13,7 @@ export const eitherTypeIdentifier = GoAST.createIdentifier("Either");
 export const eitherNoValueIdentifier = GoAST.createIdentifier("JSUndefined");
 export const eitherSuccessFunctionIdentifier = GoAST.createIdentifier("EitherSuccessOf");
 export const eitherFailFunctionIdentifier = GoAST.createIdentifier("EitherFailOf");
+export const eitherLeftFunctionIdentifier = GoAST.createIdentifier("EitherLeftOf");
 // ADR-2 : valeur nue (non Either) rangée dans une union Either[V].
 export const eitherPlainFunctionIdentifier = GoAST.createIdentifier("EitherPlainOf");
 // ADR-2 : Either[From] vers Either[To] quand les variantes en jeu n'ont pas de valeur.
@@ -32,6 +33,7 @@ export const eitherDependency = DCommon.memo(() => {
 	const generic = GoAST.createIdentifier("V");
 	const receiver = GoAST.createIdentifier("e");
 	const valueArgument = GoAST.createIdentifier("value");
+	const informationArgument = GoAST.createIdentifier("information");
 	const fieldIdentifiers = {
 		kind: GoAST.createIdentifier("Kind"),
 		information: GoAST.createIdentifier("Information"),
@@ -254,6 +256,35 @@ export const eitherDependency = DCommon.memo(() => {
 									eitherKindIdentifiers.fail,
 									GoAST.createStringLiteral({ value: "fail" }),
 									undefined,
+								),
+							],
+						}),
+					],
+				}),
+			}),
+			// left(information, value) : Left générique, information portée telle quelle.
+			GoAST.createFunctionDeclaration({
+				identifier: eitherLeftFunctionIdentifier,
+				generic: [typeParameter],
+				arguments: [
+					GoAST.createFunctionArgument({
+						identifier: informationArgument,
+						type: GoAST.builtinTypeReferences.string,
+					}),
+					GoAST.createFunctionArgument({
+						identifier: valueArgument,
+						type: generic,
+					}),
+				],
+				returnTypes: [eitherOfGeneric],
+				body: GoAST.createBlockStatement({
+					statements: [
+						GoAST.createReturnStatement({
+							values: [
+								eitherLiteral(
+									eitherKindIdentifiers.left,
+									informationArgument,
+									valueArgument,
 								),
 							],
 						}),

@@ -6,7 +6,7 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { type BuildContext } from "../../../../context/build";
 import { transformCallExpression } from "../../../shared";
-import { typeTransformers } from "../../../type";
+import { goTypeOfExpression } from "../../../type/goTypeOf";
 import { inspectSharedDependency, printFunctionIdentifier } from "../../../../sharedDependency/defaults/inspect";
 
 // DCommon.print n'accepte qu'une forme à un argument dans les exercices
@@ -65,27 +65,15 @@ export async function printExpressionHandler(
 		return context.error(callNode, "missing-print-value");
 	}
 
-	const argumentType = await context.transpilation.typeChecker.getTypeAtLocation(argumentNode);
-	const argumentTypeNode = await context.transpilation.typeChecker.typeToTypeNode(
-		argumentType,
-		callNode,
-	);
-
-	if (!argumentTypeNode) {
-		return context.error(argumentNode, "unable-to-create-print-type-node");
-	}
-
+	// D16 : type Go DÉCLARÉ de l'argument (variable Go), pas le type rétréci par
+	// TypeScript après un `if (isLeft(x))` (qui donnerait Print[Either[JSUndefined]]).
 	const genericArgument = await DCommon.asyncPipe(
-		context.transform(argumentTypeNode, typeTransformers.value),
+		goTypeOfExpression(argumentNode, context),
 		DEither.unwrapRight,
 	);
 
 	if (DEither.isLeft(genericArgument)) {
 		return genericArgument;
-	}
-
-	if (!DArray.lengthEqual(genericArgument.before, 0)) {
-		return context.error(argumentTypeNode, "unsupported-before-on-print-type");
 	}
 
 	const packageName = context.registerSharedDependency(inspectSharedDependency.value);

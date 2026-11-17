@@ -10,6 +10,8 @@ import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
 import { isRightExpressionHandler, isLeftExpressionHandler } from "./isRight";
 import { whenIsRightExpressionHandler, whenIsRightOtherwiseExpressionHandler } from "./whenIsRight";
+import { leftExpressionHandler } from "./left";
+import { matchInformationExpressionHandler } from "./matchInformation";
 import { eitherTypeHandler, eitherTypeNames, type EitherTypeMember } from "./types";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
@@ -54,6 +56,8 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 					context,
 				),
 			),
+			DPattern.match(DCommon.equal("left"), () => leftExpressionHandler(node, context)),
+			DPattern.match(DCommon.equal("matchInformation"), () => matchInformationExpressionHandler(node, context)),
 			DPattern.match(DCommon.equal("isRight"), () => isRightExpressionHandler(node, context)),
 			DPattern.match(DCommon.equal("isLeft"), () => isLeftExpressionHandler(node, context)),
 			DPattern.match(DCommon.equal("whenIsRight"), () => whenIsRightExpressionHandler(node, context)),

@@ -11,11 +11,13 @@ import { prefixUnaryExpressionTransformer } from "./prefixUnary";
 import { sharedExpressionTransformers } from "../shared";
 import { binaryExpressionTransformer } from "./binary";
 import { arrowFunctionTransformer } from "./arrowFunction";
+import { globalIdentifierTransformer } from "./globals";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
 		...duploJSExpressionTransformers.value,
 		...sharedExpressionTransformers.value,
+		globalIdentifierTransformer,
 		identifierTransformer,
 		numericLiteralTransformer,
 		stringLiteralTransformer,
