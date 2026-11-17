@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
-# Lance scripts/check.sh pour chaque exercice et affiche un tableau récapitulatif (Markdown).
+# Lance scripts/check.sh sur plusieurs cibles et affiche un tableau récapitulatif (Markdown).
 #
-# Usage : ./scripts/check-all.sh [XX ...]   (par défaut : 00 à 10)
-# Le détail de chaque exercice reste disponible dans out/XX.*.
-# Code de sortie : 0 si tous les exercices sont identiques, 1 sinon.
+# Usage : ./scripts/check-all.sh                       exercices 00 à 10
+#         ./scripts/check-all.sh 01 02 variations/01-alias   cibles au choix (numéros ou dossiers)
+#         ./scripts/check-all.sh --variations          toutes les variantes de variations/
+#         ./scripts/check-all.sh --variations 01       seulement les variantes dont le nom commence par 01
+# Le détail de chaque cible reste disponible dans out/<id>.* (id = XX ou nom du dossier).
+# Code de sortie : 0 si toutes les cibles sont identiques, 1 sinon.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/out"
 
-if [[ $# -gt 0 ]]; then
+if [[ "${1:-}" == "--variations" ]]; then
+	shift
+	PREFIXES=("$@")
+	[[ ${#PREFIXES[@]} -gt 0 ]] || PREFIXES=("")
+	IDS=()
+	for prefix in "${PREFIXES[@]}"; do
+		for dir in "$ROOT"/variations/"$prefix"*/; do
+			[[ -f "$dir/index.ts" ]] && IDS+=("variations/$(basename "$dir")")
+		done
+	done
+	if [[ ${#IDS[@]} -eq 0 ]]; then
+		echo "Aucune variante trouvée dans variations/ (préfixe : ${PREFIXES[*]:-aucun})." >&2
+		exit 2
+	fi
+elif [[ $# -gt 0 ]]; then
 	IDS=("$@")
 else
 	IDS=(00 01 02 03 04 05 06 07 08 09 10)
@@ -51,8 +68,10 @@ cause() {
 ROWS=()
 FAILED=0
 
-for id in "${IDS[@]}"; do
-	verdict=$(CHECK_QUIET=1 "$ROOT/scripts/check.sh" "$id" 2>&1) || FAILED=$((FAILED + 1))
+for target in "${IDS[@]}"; do
+	verdict=$(CHECK_QUIET=1 "$ROOT/scripts/check.sh" "$target" 2>&1) || FAILED=$((FAILED + 1))
+	# check.sh nomme ses fichiers out/ d'après le numéro ou le nom du dossier.
+	id="$(basename "${target%/}")"
 	echo "$verdict" >&2
 
 	ts=SKIP build=SKIP vet=SKIP run=SKIP diff=SKIP
@@ -65,10 +84,10 @@ for id in "${IDS[@]}"; do
 done
 
 echo
-echo "| Exercice | TS | Transpile | go vet | go run | diff | Cause du premier échec |"
+echo "| Cible | TS | Transpile | go vet | go run | diff | Cause du premier échec |"
 echo "|---|---|---|---|---|---|---|"
 printf '%s\n' "${ROWS[@]}"
 echo
-echo "$(( ${#IDS[@]} - FAILED ))/${#IDS[@]} exercices avec une sortie Go identique à TypeScript."
+echo "$(( ${#IDS[@]} - FAILED ))/${#IDS[@]} cibles avec une sortie Go identique à TypeScript."
 
 [[ "$FAILED" -eq 0 ]]
