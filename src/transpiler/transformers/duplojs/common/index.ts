@@ -49,6 +49,13 @@ export const duploJSCommonExpressionTransformer: Transformer<GoAST.Expression> =
 					context,
 				),
 			),
+			DPattern.match(
+				DCommon.equal("asyncPipe"),
+				() => pipeExpressionHandler(
+					node,
+					context,
+				),
+			),
 			DPattern.otherwise(
 				() => context.error(node),
 			),

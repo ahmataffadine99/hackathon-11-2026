@@ -73,3 +73,61 @@ Les exercices officiels (`projects/`) ne couvrent qu'un exemple par problème. C
 
 Ces onze variantes passent `tsc --noEmit`, la transpilation, `go vet`, `go run`
 et la comparaison de sortie avec `tsx`.
+
+## Exercice 10
+
+| Variante | Ce qu'elle vérifie | Sortie de référence `tsx` |
+|---|---|---|
+| `10-group-lazy-stop` | `asyncGroup` appelle les fabriques dans l'ordre et s'arrête au deuxième `Left` ; la troisième fabrique n'est pas appelée | `factory 1`, `factory 2`, puis le `Left("second", 2)` |
+| `10-right-async-pipe-left` | `rightAsyncPipe` propage l'entrée gauche et n'appelle aucune étape | `Left("already-stopped", 7)` ; aucun message d'étape |
+| `10-async-pipe-plain` | `asyncPipe` compose une valeur nue, une fonction `async` et une étape nue | `16` |
+| `10-await-direct` | fonction `async` utilisateur exécutée puis attendue directement | `inside async function`, `42` |
+| `10-sync-between` | effet synchrone entre la création de `asyncGroup` et son `await` | `synchronous effect before await`, puis les deux fabriques et `Success([ 1, 2 ])` |
+
+Sorties brutes observées avec `tsx` :
+
+```text
+10-group-lazy-stop:
+factory 1
+factory 2
+{
+  '@duplojs/lang/kind/@DuplojsLangEither/left': null,
+  '@duplojs/lang/kind/@DuplojsLangEither/information': 'second',
+  '@duplojs/lang/kind/@DuplojsLangEither/value': 2
+}
+
+10-right-async-pipe-left:
+{
+  '@duplojs/lang/kind/@DuplojsLangEither/left': null,
+  '@duplojs/lang/kind/@DuplojsLangEither/information': 'already-stopped',
+  '@duplojs/lang/kind/@DuplojsLangEither/value': 7
+}
+
+10-async-pipe-plain:
+16
+
+10-await-direct:
+inside async function
+42
+
+10-sync-between:
+synchronous effect before await
+factory 1
+factory 2
+{
+  '@duplojs/lang/kind/@DuplojsLangEither/right': null,
+  '@duplojs/lang/kind/@DuplojsLangEither/information': 'success',
+  '@duplojs/lang/kind/@DuplojsLangEither/value': [ 1, 2 ],
+  '@duplojs/lang/kind/@DuplojsLangEither/success': null
+}
+```
+
+`10-sync-between` est un écart **attendu et documenté** : JavaScript affiche
+l'effet synchrone avant d'exécuter les fabriques, alors que l'option A exécute
+les fabriques dans l'appel Go inliné. Cette variante doit rester un échec attendu
+de comparaison ; elle ne doit pas être retirée ni « corrigée » en ajoutant des
+goroutines ou une file de microtâches.
+
+Le transpileur prend en charge la forme tableau d'`asyncGroup`. La forme objet,
+bien qu'acceptée par DuploJS, est refusée explicitement
+(`duplojs-either-async-group-only-supports-arrays`).
