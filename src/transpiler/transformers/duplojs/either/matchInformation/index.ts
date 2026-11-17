@@ -19,7 +19,11 @@ import {
 	type TypedExpression,
 } from "../../application";
 import { coerceGoExpression } from "../coerce";
-import { getEitherValueGoType, unionGoTypes } from "../goType";
+import {
+	getEither2GoTypes,
+	getEitherValueAccess,
+	unionGoTypes,
+} from "../goType";
 import { eitherDependency } from "../sharedDependency";
 
 // DEither.matchInformation(e, { info: handler, … }) / matchInformation({ … }) (ADR-9) :
@@ -34,7 +38,6 @@ import { eitherDependency } from "../sharedDependency";
 // (aucun garde-fou à l'exécution ; l'exhaustivité est garantie par TypeScript).
 
 const informationFieldIdentifier = GoAST.createIdentifier("Information");
-const valueFieldIdentifier = GoAST.createIdentifier("Value");
 const panicIdentifier = GoAST.createIdentifier("panic");
 
 interface MatchCase {
@@ -87,9 +90,13 @@ async function buildSwitch(params: {
 }): Promise<CallbackApplicationResult> {
 	const { input, cases, site, context } = params;
 
-	const valueGoType = DEither.unwrapRight(getEitherValueGoType(input.goType));
+	if (!DEither.isLeft(getEither2GoTypes(input.goType))) {
+		return context.error(site, "duplojs-either-matchinformation-either2-not-supported");
+	}
 
-	if (DEither.isLeft(valueGoType)) {
+	const valueAccess = DEither.unwrapRight(getEitherValueAccess(input.goType));
+
+	if (DEither.isLeft(valueAccess)) {
 		return context.error(site, "duplojs-either-matchinformation-input-is-not-an-either");
 	}
 
@@ -103,9 +110,9 @@ async function buildSwitch(params: {
 						{
 							expression: GoAST.createSelectorExpression({
 								target: input.expression,
-								identifier: valueFieldIdentifier,
+								identifier: valueAccess.field,
 							}),
-							goType: valueGoType,
+							goType: valueAccess.valueType,
 						},
 					]),
 				);

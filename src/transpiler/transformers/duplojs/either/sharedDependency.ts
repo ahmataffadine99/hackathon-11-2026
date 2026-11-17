@@ -14,6 +14,9 @@ export const eitherNoValueIdentifier = GoAST.createIdentifier("JSUndefined");
 export const eitherSuccessFunctionIdentifier = GoAST.createIdentifier("EitherSuccessOf");
 export const eitherFailFunctionIdentifier = GoAST.createIdentifier("EitherFailOf");
 export const eitherLeftFunctionIdentifier = GoAST.createIdentifier("EitherLeftOf");
+export const either2TypeIdentifier = GoAST.createIdentifier("Either2");
+export const either2SuccessFunctionIdentifier = GoAST.createIdentifier("Either2SuccessOf");
+export const either2FromLeftFunctionIdentifier = GoAST.createIdentifier("Either2FromLeft");
 // ADR-2 : valeur nue (non Either) rangée dans une union Either[V].
 export const eitherPlainFunctionIdentifier = GoAST.createIdentifier("EitherPlainOf");
 // ADR-2 : Either[From] vers Either[To] quand les variantes en jeu n'ont pas de valeur.
@@ -129,6 +132,272 @@ export const eitherDependency = DCommon.memo(() => {
 		typeReference: GoAST.createIdentifier("JSUndefined"),
 		elements: [],
 	});
+	const either2LeftTypeParameter = GoAST.createTypeParameter({
+		identifier: GoAST.createIdentifier("L"),
+		constraint: GoAST.builtinTypeReferences.any,
+	});
+	const either2RightTypeParameter = GoAST.createTypeParameter({
+		identifier: GoAST.createIdentifier("R"),
+		constraint: GoAST.builtinTypeReferences.any,
+	});
+	const either2OfGeneric = GoAST.createGenericTypeReference({
+		typeReference: either2TypeIdentifier,
+		typeArguments: DCommon.cast([
+			either2LeftTypeParameter.identifier,
+			either2RightTypeParameter.identifier,
+		]),
+	});
+	const either2Receiver = GoAST.createIdentifier("e");
+	const either2LeftArgument = GoAST.createIdentifier("left");
+	const either2RightArgument = GoAST.createIdentifier("right");
+	const either2SourceArgument = GoAST.createIdentifier("source");
+	const either2Fields = {
+		kind: GoAST.createIdentifier("Kind"),
+		information: GoAST.createIdentifier("Information"),
+		left: GoAST.createIdentifier("Left"),
+		right: GoAST.createIdentifier("Right"),
+	};
+	const either2ReceiverField = (field: GoAST.Identifier) => GoAST.createSelectorExpression({
+		target: either2Receiver,
+		identifier: field,
+	});
+	const either2IsSideMethod = (
+		identifier: GoAST.Identifier,
+		kinds: readonly [GoAST.Identifier, GoAST.Identifier],
+	) => GoAST.createMethodDeclaration({
+		identifier,
+		receiver: [either2Receiver, either2OfGeneric],
+		generic: [],
+		arguments: [],
+		returnTypes: [GoAST.builtinTypeReferences.bool],
+		body: GoAST.createBlockStatement({
+			statements: [
+				GoAST.createReturnStatement({
+					values: [
+						GoAST.createBinaryExpression({
+							operator: "||",
+							left: GoAST.createBinaryExpression({
+								operator: "==",
+								left: either2ReceiverField(either2Fields.kind),
+								right: kinds[0],
+							}),
+							right: GoAST.createBinaryExpression({
+								operator: "==",
+								left: either2ReceiverField(either2Fields.kind),
+								right: kinds[1],
+							}),
+						}),
+					],
+				}),
+			],
+		}),
+	});
+	const either2InspectEntries = (
+		side: "left" | "right",
+		value: GoAST.Expression,
+		tag: "success" | "fail" | undefined,
+	) => GoAST.createReturnStatement({
+		values: [
+			GoAST.createSliceLiteral({
+				typeReference: GoAST.createSliceType({
+					elementType: inspectEntryTypeIdentifier,
+				}),
+				elements: [
+					inspectEntry(side, nullLiteral),
+					inspectEntry("information", either2ReceiverField(either2Fields.information)),
+					inspectEntry("value", value),
+					...(tag ? [inspectEntry(tag, nullLiteral)] : []),
+				],
+			}),
+		],
+	});
+	const either2Literal = (
+		kind: GoAST.Expression,
+		information: GoAST.Expression,
+		left: GoAST.Expression | undefined,
+		right: GoAST.Expression | undefined,
+	) => GoAST.createStructLiteral({
+		typeReference: either2OfGeneric,
+		elements: [
+			GoAST.createKeyedElement({ key: either2Fields.kind, value: kind }),
+			GoAST.createKeyedElement({ key: either2Fields.information, value: information }),
+			...(left
+				? [GoAST.createKeyedElement({ key: either2Fields.left, value: left })]
+				: []),
+			...(right
+				? [GoAST.createKeyedElement({ key: either2Fields.right, value: right })]
+				: []),
+		],
+	});
+	const either2Declarations = [
+		GoAST.createTypeDefinition({
+			identifier: either2TypeIdentifier,
+			generic: [either2LeftTypeParameter, either2RightTypeParameter],
+			type: GoAST.createStructType({
+				fields: [
+					GoAST.createStructField({
+						identifier: either2Fields.kind,
+						typeReference: eitherKindIdentifier,
+					}),
+					GoAST.createStructField({
+						identifier: either2Fields.information,
+						typeReference: GoAST.builtinTypeReferences.string,
+					}),
+					GoAST.createStructField({
+						identifier: either2Fields.left,
+						typeReference: either2LeftTypeParameter.identifier,
+					}),
+					GoAST.createStructField({
+						identifier: either2Fields.right,
+						typeReference: either2RightTypeParameter.identifier,
+					}),
+				],
+			}),
+		}),
+		GoAST.createFunctionDeclaration({
+			identifier: either2SuccessFunctionIdentifier,
+			generic: [either2LeftTypeParameter, either2RightTypeParameter],
+			arguments: [
+				GoAST.createFunctionArgument({
+					identifier: either2RightArgument,
+					type: either2RightTypeParameter.identifier,
+				}),
+			],
+			returnTypes: [either2OfGeneric],
+			body: GoAST.createBlockStatement({
+				statements: [
+					GoAST.createReturnStatement({
+						values: [
+							either2Literal(
+								eitherKindIdentifiers.success,
+								GoAST.createStringLiteral({ value: "success" }),
+								undefined,
+								either2RightArgument,
+							),
+						],
+					}),
+				],
+			}),
+		}),
+		GoAST.createFunctionDeclaration({
+			identifier: either2FromLeftFunctionIdentifier,
+			generic: [either2LeftTypeParameter, either2RightTypeParameter],
+			arguments: [
+				GoAST.createFunctionArgument({
+					identifier: either2SourceArgument,
+					type: GoAST.createGenericTypeReference({
+						typeReference: eitherTypeIdentifier,
+						typeArguments: DCommon.cast([either2LeftTypeParameter.identifier]),
+					}),
+				}),
+			],
+			returnTypes: [either2OfGeneric],
+			body: GoAST.createBlockStatement({
+				statements: [
+					GoAST.createReturnStatement({
+						values: [
+							either2Literal(
+								GoAST.createSelectorExpression({
+									target: either2SourceArgument,
+									identifier: fieldIdentifiers.kind,
+								}),
+								GoAST.createSelectorExpression({
+									target: either2SourceArgument,
+									identifier: fieldIdentifiers.information,
+								}),
+								GoAST.createSelectorExpression({
+									target: either2SourceArgument,
+									identifier: fieldIdentifiers.value,
+								}),
+								undefined,
+							),
+						],
+					}),
+				],
+			}),
+		}),
+		either2IsSideMethod(
+			GoAST.createIdentifier("IsRight"),
+			[eitherKindIdentifiers.right, eitherKindIdentifiers.success],
+		),
+		either2IsSideMethod(
+			GoAST.createIdentifier("IsLeft"),
+			[eitherKindIdentifiers.left, eitherKindIdentifiers.fail],
+		),
+		GoAST.createMethodDeclaration({
+			identifier: GoAST.createIdentifier("InspectPlain"),
+			receiver: [either2Receiver, either2OfGeneric],
+			generic: [],
+			arguments: [],
+			returnTypes: [GoAST.builtinTypeReferences.any, GoAST.builtinTypeReferences.bool],
+			body: GoAST.createBlockStatement({
+				statements: [
+					GoAST.createReturnStatement({
+						values: [
+							GoAST.createNilLiteral({}),
+							GoAST.createBooleanLiteral({ value: false }),
+						],
+					}),
+				],
+			}),
+		}),
+		GoAST.createMethodDeclaration({
+			identifier: GoAST.createIdentifier("InspectEntries"),
+			receiver: [either2Receiver, either2OfGeneric],
+			generic: [],
+			arguments: [],
+			returnTypes: [
+				GoAST.createSliceType({
+					elementType: inspectEntryTypeIdentifier,
+				}),
+			],
+			body: GoAST.createBlockStatement({
+				statements: [
+					GoAST.createExpressionSwitchStatementWithDefault({
+						expression: either2ReceiverField(either2Fields.kind),
+						casesBeforeDefault: [
+							GoAST.createExpressionSwitchCase({
+								expressions: DCommon.cast([eitherKindIdentifiers.success]),
+								statements: [
+									either2InspectEntries(
+										"right",
+										either2ReceiverField(either2Fields.right),
+										"success",
+									),
+								],
+							}),
+							GoAST.createExpressionSwitchCase({
+								expressions: DCommon.cast([eitherKindIdentifiers.fail]),
+								statements: [
+									either2InspectEntries("left", undefinedLiteral, "fail"),
+								],
+							}),
+							GoAST.createExpressionSwitchCase({
+								expressions: DCommon.cast([eitherKindIdentifiers.right]),
+								statements: [
+									either2InspectEntries(
+										"right",
+										either2ReceiverField(either2Fields.right),
+										undefined,
+									),
+								],
+							}),
+						],
+						defaultCase: GoAST.createDefaultCase({
+							statements: [
+								either2InspectEntries(
+									"left",
+									either2ReceiverField(either2Fields.left),
+									undefined,
+								),
+							],
+						}),
+						casesAfterDefault: [],
+					}),
+				],
+			}),
+		}),
+	];
 
 	// Ordre des clés identique à celui affiché par DCommon.print
 	// (docs/duplojs-semantics.md, Q2) : côté, information, value, puis tag éventuel.
@@ -460,6 +729,7 @@ export const eitherDependency = DCommon.memo(() => {
 					],
 				}),
 			}),
+			...either2Declarations,
 		],
 	});
 });

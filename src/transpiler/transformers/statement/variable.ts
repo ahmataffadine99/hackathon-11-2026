@@ -6,6 +6,9 @@ import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { typeTransformers } from "../type";
 import { expressionTransformers } from "../expression";
+import { bindArrayPattern } from "../expression/bindArrayPattern";
+import { goTypeOfExpression } from "../type/goTypeOf";
+import * as DModeling from "@duplojs/lang/modeling";
 
 export const variableStatementTransformer: Transformer<GoAST.Statement> = createTransformer(
 	async(node, context) => {
@@ -30,15 +33,10 @@ export const variableStatementTransformer: Transformer<GoAST.Statement> = create
 			return context.error(node, "empty-variable-statement");
 		}
 
-		if (!TsAST.isIdentifier(declaration.name)) {
-			return context.error(declaration.name, "variable-name-is-not-identifier");
-		}
-
 		if (!declaration.initializer) {
 			return context.error(declaration, "missing-variable-initializer");
 		}
 
-		const identifier = context.createSourceIdentifier(declaration.name.text);
 		const initializer = await DCommon.asyncPipe(
 			context.transform(declaration.initializer, expressionTransformers.value),
 			DEither.unwrapRight,
@@ -47,6 +45,117 @@ export const variableStatementTransformer: Transformer<GoAST.Statement> = create
 		if (DEither.isLeft(initializer)) {
 			return initializer;
 		}
+
+		if (TsAST.isArrayBindingPattern(declaration.name)) {
+			const sourceGoType = await DCommon.asyncPipe(
+				goTypeOfExpression(declaration.initializer, context),
+				DEither.unwrapRight,
+			);
+
+			if (DEither.isLeft(sourceGoType)) {
+				return sourceGoType;
+			}
+
+			const sourceIdentifier = context.generateIdentifier();
+			const bindings = await DCommon.asyncPipe(
+				bindArrayPattern({
+					pattern: declaration.name,
+					source: sourceIdentifier,
+					sourceGoType: sourceGoType.result,
+					context,
+				}),
+				DEither.unwrapRight,
+			);
+
+			if (DEither.isLeft(bindings)) {
+				return bindings;
+			}
+
+			if (bindings.length === 0) {
+				return context.success({
+					before: [
+						...initializer.before,
+						GoAST.createAssignmentStatement({
+							targets: DCommon.cast([GoAST.createIdentifier("_")]),
+							values: DCommon.cast([initializer.result]),
+						}),
+					],
+					result: GoAST.createBlockStatement({
+						statements: [],
+					}),
+				});
+			}
+
+			if (!DModeling.hasTagValue(sourceGoType.result, "[node][type]slice")) {
+				return context.error(declaration.name, "array-destructuring-source-is-not-a-slice");
+			}
+
+			const sourceBinding = GoAST.createShortVariableDeclarationStatement({
+				identifier: sourceIdentifier,
+				initializer: initializer.result,
+			});
+
+			if (node.parent?.kind !== TsAST.SyntaxKind.SourceFile) {
+				const statements = DArray.concat(
+					initializer.before,
+					[sourceBinding],
+					bindings,
+				);
+				const result = statements[statements.length - 1];
+
+				if (!result) {
+					return context.error(declaration.name, "empty-array-destructuring-result");
+				}
+
+				return context.success({
+					before: statements.slice(0, -1),
+					result,
+				});
+			}
+
+			const assignments: GoAST.Statement[] = [];
+
+			for (const binding of bindings) {
+				if (!DModeling.hasTagValue(binding, "[node][statement]variable-short")) {
+					return context.error(declaration.name, "unexpected-array-destructuring-binding");
+				}
+
+				context.file.declarations.add(
+					GoAST.createVariableDeclarationZeroValue({
+						identifier: binding.identifier,
+						typeReference: sourceGoType.result.elementType,
+					}),
+				);
+
+				assignments.push(
+					GoAST.createAssignmentStatement({
+						targets: DCommon.cast([binding.identifier]),
+						values: DCommon.cast([binding.initializer]),
+					}),
+				);
+			}
+
+			const result = assignments[assignments.length - 1];
+
+			if (!result) {
+				return context.error(declaration.name, "empty-array-destructuring-result");
+			}
+
+			return context.success({
+				before: DArray.concat(
+					initializer.before,
+					[sourceBinding],
+					assignments.slice(0, -1),
+				),
+				result,
+			});
+		}
+
+		if (!TsAST.isIdentifier(declaration.name)) {
+			return context.error(declaration.name, "object-destructuring-variable-is-not-supported");
+		}
+
+		const identifier = context.createSourceIdentifier(declaration.name.text);
 
 		if (node.parent?.kind !== TsAST.SyntaxKind.SourceFile) {
 			return context.success({

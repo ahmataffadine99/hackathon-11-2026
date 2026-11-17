@@ -10,7 +10,9 @@ import { type GoType } from "./goTypeOf";
 import { eitherDependency } from "../duplojs/either/sharedDependency";
 import {
 	createEitherGoType,
+	createEither2GoType,
 	createEitherNoValueGoType,
+	getEither2GoTypes,
 	getEitherValueGoType,
 	isEitherNoValueGoType,
 } from "../duplojs/either/goType";
@@ -48,7 +50,10 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 		const memberTypes = await DCommon.asyncPipe(
 			node.types,
 			DGenerator.asyncReduce(
-				DGenerator.reduceFrom<readonly GoType[]>([]),
+				DGenerator.reduceFrom<readonly {
+					goType: GoType;
+					variantName: string | undefined;
+				}[]>([]),
 				async({ item, lastValue, next, exit }) => {
 					const memberType = await DCommon.asyncPipe(
 						context.transform(item, typeTransformers.value),
@@ -63,7 +68,26 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 						return exit(context.error(item, "un-support-before-on-union-member-type"));
 					}
 
-					return next(DArray.push(lastValue, memberType.result));
+					let variantName: string | undefined;
+
+					if (TsAST.isTypeReferenceNode(item) || TsAST.isImportTypeNode(item)) {
+						const moduleReference = DEither.unwrapRight(
+							await context.resolveReferenceModule(
+								TsAST.isTypeReferenceNode(item) ? item.typeName : item,
+								"@duplojs/lang",
+								/^dist\/either\//,
+							),
+						);
+
+						variantName = DEither.isLeft(moduleReference)
+							? undefined
+							: moduleReference.symbol.name;
+					}
+
+					return next(DArray.push(lastValue, {
+						goType: memberType.result,
+						variantName,
+					}));
 				},
 			),
 		);
@@ -76,7 +100,7 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 			memberTypes,
 			DArray.reduceFrom<readonly GoType[]>([]),
 			({ element, lastValue, next }) => {
-				const valueType = DEither.unwrapRight(getEitherValueGoType(element));
+				const valueType = DEither.unwrapRight(getEitherValueGoType(element.goType));
 
 				return next(
 					DEither.isLeft(valueType)
@@ -88,12 +112,12 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 
 		const plainTypes = DArray.filter(
 			memberTypes,
-			(memberType) => DEither.isLeft(getEitherValueGoType(memberType)),
+			(memberType) => DEither.isLeft(getEitherValueGoType(memberType.goType)),
 		);
 
 		// Union sans Either : tous les membres doivent avoir le même type Go.
 		if (DArray.lengthEqual(eitherValueTypes, 0)) {
-			const distinctPlainTypes = distinctByRender(plainTypes);
+			const distinctPlainTypes = distinctByRender(DArray.map(plainTypes, ({ goType }) => goType));
 			const plainType = DArray.first(distinctPlainTypes);
 
 			if (!plainType || DArray.length(distinctPlainTypes) > 1) {
@@ -103,24 +127,103 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 			return context.success({ result: plainType });
 		}
 
-		const valueTypes = distinctByRender(
-			DArray.concat(
-				DArray.filter(eitherValueTypes, (valueType) => !isEitherNoValueGoType(valueType)),
-				plainTypes,
-			),
-		);
+		const packageName = context.registerSharedDependency(eitherDependency.value);
+		const leftTypes: GoType[] = [];
+		const rightTypes: GoType[] = [];
+		const unclassifiedEitherTypes: GoType[] = [];
+		let hasEither2 = false;
 
-		if (DArray.length(valueTypes) > 1) {
+		for (const member of memberTypes) {
+			const either2Types = DEither.unwrapRight(getEither2GoTypes(member.goType));
+
+			if (!DEither.isLeft(either2Types)) {
+				hasEither2 = true;
+
+				if (member.variantName === "Left" || member.variantName === "Fail") {
+					if (!isEitherNoValueGoType(either2Types.leftType)) {
+						leftTypes.push(either2Types.leftType);
+					}
+				} else if (member.variantName === "Right" || member.variantName === "Success") {
+					rightTypes.push(either2Types.rightType);
+				} else {
+					unclassifiedEitherTypes.push(member.goType);
+				}
+
+				continue;
+			}
+
+			const eitherValue = DEither.unwrapRight(getEitherValueGoType(member.goType));
+
+			if (DEither.isLeft(eitherValue)) {
+				rightTypes.push(member.goType);
+				continue;
+			}
+
+			if (member.variantName === "Left" || member.variantName === "Fail") {
+				if (!isEitherNoValueGoType(eitherValue)) {
+					leftTypes.push(eitherValue);
+				}
+			} else if (member.variantName === "Right" || member.variantName === "Success") {
+				rightTypes.push(eitherValue);
+			} else {
+				unclassifiedEitherTypes.push(eitherValue);
+			}
+		}
+
+		const distinctLeftTypes = distinctByRender(leftTypes);
+		const distinctRightTypes = distinctByRender(rightTypes);
+		const distinctUnclassifiedTypes = distinctByRender(unclassifiedEitherTypes);
+		const distinctPlainTypes = distinctByRender(DArray.map(plainTypes, ({ goType }) => goType));
+
+		if (distinctUnclassifiedTypes.length > 0) {
+			if (
+				distinctUnclassifiedTypes.length > 1
+				|| distinctLeftTypes.length > 0
+				|| distinctRightTypes.length > 0
+				|| distinctPlainTypes.length > 1
+			) {
+				return context.notSupport();
+			}
+
+			const fallback = DArray.first(distinctUnclassifiedTypes);
+
+			return context.success({
+				result: createEitherGoType(
+					packageName,
+					fallback ?? DArray.first(distinctPlainTypes) ?? createEitherNoValueGoType(packageName),
+				),
+			});
+		}
+
+		if (distinctLeftTypes.length > 1 || distinctRightTypes.length > 1) {
 			return context.notSupport();
 		}
 
-		const packageName = context.registerSharedDependency(eitherDependency.value);
+		const leftType = DArray.first(distinctLeftTypes);
+		const rightType = DArray.first(distinctRightTypes)
+			?? DArray.first(distinctPlainTypes);
+
+		if (!leftType || !rightType) {
+			const onlySideType = leftType ?? rightType;
+
+			return context.success({
+				result: createEitherGoType(
+					packageName,
+					onlySideType ?? createEitherNoValueGoType(packageName),
+				),
+			});
+		}
+
+		if (GoPrinter.renderNode(leftType) === GoPrinter.renderNode(rightType)) {
+			return context.success({ result: createEitherGoType(packageName, leftType) });
+		}
+
+		if (hasEither2) {
+			return context.notSupport();
+		}
 
 		return context.success({
-			result: createEitherGoType(
-				packageName,
-				DArray.first(valueTypes) ?? createEitherNoValueGoType(packageName),
-			),
+			result: createEither2GoType(packageName, leftType, rightType),
 		});
 	},
 );
