@@ -131,3 +131,22 @@ goroutines ou une file de microtâches.
 Le transpileur prend en charge la forme tableau d'`asyncGroup`. La forme objet,
 bien qu'acceptée par DuploJS, est refusée explicitement
 (`duplojs-either-async-group-only-supports-arrays`).
+
+## 11 : passage à l'échelle (ADR-13)
+
+Ces variantes ne dérivent pas d'un exercice. Elles reproduisent des situations
+fréquentes dans un vrai projet, qui bloquaient le transpileur ou produisaient du
+Go invalide avant l'ADR-13.
+
+| Variante | Ce qu'elle vérifie |
+|---|---|
+| `11-import-cycle` | Deux modules qui s'importent mutuellement : un seul package Go ; deux `label` de premier niveau sans conflit ; ordre d'évaluation ES des modules |
+| `11-import-alias` | `import { add as plus }` : le Go désigne le nom déclaré (`add`) |
+| `11-union-plain` | `string \| number` : union étiquetée, `typeof`, rétrécissement après `typeof`, `===` sur un membre, `print` |
+| `11-union-optional` | `number \| undefined` : `return undefined`, `??`, `=== undefined`, `%` |
+| `11-union-array` | `(string \| number)[]`, `string \| number \| null` en paramètre, `print` de `[]bool` et `[][]float64` |
+| `11-either-left-string` | `left` à valeur `string` et `success` à valeur `number` : `Either2` construit directement |
+| `11-either-two-lefts` | Deux `left` de types différents : gauche en union étiquetée ; `matchInformation` lit le bon côté |
+| `11-either-pipe-errors` | `rightPipe` entre deux fonctions aux erreurs de types différents |
+| `11-void-function` | Fonction sans valeur de retour et `return;` |
+| `11-real-orders` | Trois fichiers, alias de type, trois types d'erreur dans un pipeline, `matchInformation`, paramètre `string \| undefined`, `group` |
