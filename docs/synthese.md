@@ -1,7 +1,7 @@
 # Synthèse : transpiler DuploJS vers Go
 
 > Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = non encore confirmé par une exécution.
-> État au 18/11 : **exercices 00 à 10 identiques à TypeScript (11/11)** ; variantes **39/43** sur `main` `699fbaf`, **41/43** avec le correctif D22 (en cours de merge) **[observé, `./scripts/check-all.sh` et `--variations`]**. Les deux variantes restantes sont des limites assumées (`03-curried-stored`, `10-sync-between`). Au gel, ces totaux sont repris de `docs/demo/check-all.txt` et `docs/demo/variations.txt` (commit livré).
+> État au 18/11 : **exercices 00 à 10 identiques à TypeScript (11/11)** ; variantes **41/43** sur `main` `f0a10cf` (correctif D22 inclus) **[observé, `./scripts/check-all.sh` et `--variations`]**. Les deux variantes restantes sont des limites assumées (`03-curried-stored`, `10-sync-between`). Au gel, ces totaux sont repris de `docs/demo/check-all.txt` et `docs/demo/variations.txt` (commit livré).
 
 ## La réponse en une phrase
 
@@ -52,7 +52,7 @@ Go n'a pas de ternaire : `c ? a : b` donne `var t T ; if c { t = a } else { t = 
 
 ## Résultats
 
-- **Fonctionnels [observé]** : 00 à 10 donnent une sortie Go **identique** à celle de TypeScript (`diff` vide), ainsi que 39 variantes sur 43 sur `main` `699fbaf`, 41 avec le correctif D22 (alias, ordre des unions, `else if` avec effets, `-0`, `NaN`, tableaux vides, closures, court-circuit, arrêt d'`asyncGroup` au premier échec…).
+- **Fonctionnels [observé]** : 00 à 10 donnent une sortie Go **identique** à celle de TypeScript (`diff` vide), ainsi que 41 variantes sur 43 sur `main` `f0a10cf` (alias, ordre des unions, `else if` avec effets, `-0`, `NaN`, tableaux vides, closures, court-circuit, arrêt d'`asyncGroup` au premier échec…).
 - **De bout en bout [observé, `docs/measures.md`, Apple M4, 01, 05, 09 et 10]** : le binaire Go s'exécute en environ **2 ms** contre **17 à 21 ms** pour Node sur le JS compilé (environ **8,5 à 10 fois** selon la mesure, 17/11 ou 18/11 : la variation vient du côté Node), avec environ **12 fois moins** de mémoire résidente (3 Mo contre 37 Mo). Ces programmes sont minuscules : c'est surtout le **démarrage** qui est mesuré.
 - **Allocations [observé]** : 0 échappement dans le code utilisateur de l'ex. 01 ; en 05, 09 et 10, seuls les **slices** vont sur le tas (aucune closure, aucun `Either`, aucune goroutine).
 - **Tuples [observé, ADR-11, `research/tuples`]** : `[3]float64` est environ **5,3 fois plus rapide** que `[]float64`, avec 0 allocation contre 1000. Nous avons gardé `[]T` (cohérence des unions tableau et tuple de 02 à 06) : c'est une **piste d'optimisation chiffrée**, non retenue avant le gel.

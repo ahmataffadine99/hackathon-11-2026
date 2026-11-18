@@ -4,7 +4,7 @@ Minutage du PLAN §12. Une personne parle par bloc, et chaque bloc tient dans so
 
 | Temps | Bloc | Contenu | Support | Qui |
 |---|---|---|---|---|
-| 0:00–1:00 | La question et notre réponse | « Peut-on transpiler DuploJS vers Go en gardant le comportement ? » Réponse : oui pour le sous-ensemble étudié, à trois conditions (types résolus, API connue, unions regroupables). Avancement : x/10 exercices, 37/38 variantes. | `docs/synthese.md` (phrase d'ouverture) | à attribuer |
+| 0:00–1:00 | La question et notre réponse | « Peut-on transpiler DuploJS vers Go en gardant le comportement ? » Réponse : oui pour le sous-ensemble étudié, à trois conditions (types résolus, API connue, unions regroupables). Avancement : 10/10 exercices (11/11 avec l'exemple 00), 41/43 variantes (`check-all` sur `main` `f0a10cf`). | `docs/synthese.md` (phrase d'ouverture) | à attribuer |
 | 1:00–3:00 | Démarche | AST et checker TS 7 ; transformers ; `before` (ordre d'évaluation) ; coercition explicite ; callbacks (inlinés ou appelés) ; validation par `diff` contre `tsx` ; `compare-main` sur chaque PR. | Schéma de la chaîne + `scripts/check.sh` | à attribuer |
 | 3:00–6:00 | Trois décisions clés avec le Go produit | (1) `Either` par valeur : 1 allocation contre 2 001 (ADR-1). (2) `pipe` et combinateurs inlinés : extrait de l'ex. 03, `func` literal inliné d'après `-gcflags=-m` (ADR-3, ADR-7). (3) Ternaire et court-circuit : extrait de l'`add` de l'ex. 06 (ADR-8). | Extraits de Go **après la correction de D8** (noms de package relatifs, P2) | à attribuer |
 | 6:00–8:00 | Résultats | **Démo en direct** : `./scripts/check-all.sh` (tableau ✅), puis `./scripts/check.sh 09` avec un diff vide. Chiffres : Go environ 2 ms contre environ 20 ms pour Node sur JS compilé, 3 Mo contre 37 Mo (`docs/measures.md`) ; tuples `[3]T` environ 5,3 fois plus rapides (piste chiffrée, ADR-11). | Terminal + `docs/measures.md` | à attribuer |
@@ -14,7 +14,7 @@ Minutage du PLAN §12. Une personne parle par bloc, et chaque bloc tient dans so
 ## Démo : préparation et plan B
 
 - **Avant la soutenance** : `pnpm install`, puis `./scripts/check-all.sh` une première fois (caches Go et pnpm chauds). Terminal en grande police, dossier du dépôt déjà ouvert.
-- **Plan B hors ligne** (réseau, Docker ou Go indisponible) : enregistrer la veille la sortie de `./scripts/check-all.sh` et de `./scripts/check.sh 09` (texte, et une capture d'écran) dans un dossier hors du dépôt, prêt à être montré.
+- **Plan B hors ligne** (réseau, Docker ou Go indisponible) : sorties enregistrées sur le commit livré par `./scripts/record-demo.sh`, dans [`docs/demo/`](demo/README.md) (`check-all.txt`, `variations.txt`, `check-09.txt`, `check-10.txt`), avec le hash en tête de chaque fichier.
 - Commandes exactes de la démo :
 
 ```bash

@@ -27,20 +27,22 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 | 07 | ✅ `rightPipe` inliné et avec court-circuit (ADR-10) | [07.md](docs/exercises/07.md) |
 | 08 | ✅ tuples homogènes et déstructuration (ADR-11) | [08.md](docs/exercises/08.md) |
 | 09 | ✅ `group` et `Either2` lorsque les côtés diffèrent (ADR-12) | [09.md](docs/exercises/09.md) |
-| 10 | ⏳ Sprint 5 : asynchronisme | – |
+| 10 | ✅ `async`/`await`, `rightAsyncPipe`, `asyncGroup` en exécution séquentielle (ADR-5) | [10.md](docs/exercises/10.md) |
 
-**10/11 cibles (00 à 09) identiques à TypeScript** après le Sprint 4 ; variantes **37/38**. Les variantes des exercices 01 à 09 sont suivies dans [variations/README.md](variations/README.md) ; l'écart connu `03-curried-stored` est une limite documentée (voir [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)). Le benchmark `[3]float64` / `[][]float64` est dans [`research/tuples/`](research/tuples/).
+**11/11 cibles (00 à 10) identiques à TypeScript** ; variantes **41/43** (`./scripts/check-all.sh` et `--variations` sur `main` `f0a10cf`). Les variantes des exercices 01 à 10 sont suivies dans [variations/README.md](variations/README.md) ; les deux écarts sont des limites documentées : `03-curried-stored` (TypeScript type la constante en `unknown`, [ADR-7 §5](docs/decisions/ADR-7-arrow-generic-values.md)) et `10-sync-between` (échec au diff seulement, réordonnancement asynchrone, [ADR-5](docs/decisions/ADR-5-async.md)). Le benchmark `[3]float64` / `[][]float64` est dans [`research/tuples/`](research/tuples/).
 
 ## Documents clés
 
 | Document | Contenu |
 |---|---|
 | [Synthèse](docs/synthese.md) | La réponse à la question du sujet, la démarche, les décisions clés, les résultats et les limites |
-| [Décisions (ADR)](docs/decisions/) | ADR-1 (`Either` par valeur), ADR-2 (unions, `Plain`), ADR-3 (fonctions en valeur), ADR-7 (fonctions fléchées et génériques en valeur), ADR-8 (ternaire, court-circuit), ADR-9 (`matchInformation`), ADR-10 (`rightPipe`), ADR-11 (tuples), ADR-12 (`group`, `Either2`) |
-| [Fiches d'exercice](docs/exercises/) | Problèmes, stratégie, Go produit, résultats observés et limites, de 00 à 09 |
+| [Décisions (ADR)](docs/decisions/) | ADR-1 (`Either` par valeur), ADR-2 (unions, `Plain`), ADR-3 (fonctions en valeur), ADR-5 (asynchronisme), ADR-7 (fonctions fléchées et génériques en valeur), ADR-8 (ternaire, court-circuit), ADR-9 (`matchInformation`), ADR-10 (`rightPipe`), ADR-11 (tuples), ADR-12 (`group`, `Either2`) |
+| [Fiches d'exercice](docs/exercises/) | Problèmes, stratégie, Go produit, résultats observés et limites, de 00 à 10 |
 | [Mesures](docs/measures.md) | Node contre Go de bout en bout, échappements, micro-benchmarks ([`research/`](research/)) |
 | [Sémantique DuploJS](docs/duplojs-semantics.md) | Comportement de référence vérifié à l'exécution |
-| [Soutenance](docs/soutenance.md) | Trame minutée, démo, questions probables |
+| [Soutenance](docs/soutenance.md) | Trame minutée, démo, questions probables ; plan B hors ligne dans [docs/demo/](docs/demo/README.md) |
+| [Plan de l'équipe](docs/PLAN_HACKATHON.md) | Sprints, décisions, arbitrages et suivi des défauts (référencé « PLAN §… » dans les fiches et les ADR) |
+| [Relecture croisée](docs/relecture.md) | Relecture de chaque fiche et ADR par un non-auteur, décisions de livraison |
 
 Avant chaque merge, `./scripts/compare-main.sh <branche>` vérifie l'absence de régression (voir [docs/setup.md §8](docs/setup.md#8-contrôler-une-pr-avant-de-la-merger-règle-de-merge)).
 
