@@ -3,10 +3,11 @@ import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
-import type { GoType } from "../type/goTypeOf";
 import type { BuildContext } from "../../context/build";
 import type { NotfoundTransformer, TransformationError } from "@transformer";
 import { isTopLevelDeclarationName } from "../../resolvedReference";
+import { goTypeOf, type GoType } from "../type/goTypeOf";
+import { canNarrowUnion, narrowUnionExpression } from "../type/taggedUnion";
 
 function collectIdentifiers(root: TsAST.Node) {
 	const identifiers: TsAST.Identifier[] = [];
@@ -115,14 +116,27 @@ export async function bindArrayPattern(params: {
 			continue;
 		}
 
+		const element = GoAST.createIndexExpression({
+			target: source,
+			index: GoAST.createIntegerLiteral({ value: BigInt(index) }),
+		});
+		// ADR-14 : tuple hétérogène ([]UnionN) : l'élément est rétréci vers le type
+		// de la variable à cette position (`[name, value]` : string, puis number).
+		const bindingGoType = DEither.unwrapRight(await goTypeOf(
+			await context.transpilation.typeChecker.getTypeAtLocation(bindingName),
+			bindingName,
+			context,
+		));
+		const elementGoType = sourceGoType.elementType as GoType;
+		const narrowed = !DEither.isLeft(bindingGoType) && canNarrowUnion(elementGoType, bindingGoType.result)
+			? narrowUnionExpression(element, elementGoType, bindingGoType.result, context)
+			: undefined;
+
 		statements.push(GoAST.createShortVariableDeclarationStatement({
 			identifier: isTopLevelDeclarationName(bindingName)
 				? context.createTopLevelIdentifier(context.file.currentFilePath, bindingName.text)
 				: context.createSourceIdentifier(bindingName.text),
-			initializer: GoAST.createIndexExpression({
-				target: source,
-				index: GoAST.createIntegerLiteral({ value: BigInt(index) }),
-			}),
+			initializer: narrowed && !DEither.isLeft(narrowed) ? DEither.unwrapRight(narrowed).result : element,
 		}));
 	}
 

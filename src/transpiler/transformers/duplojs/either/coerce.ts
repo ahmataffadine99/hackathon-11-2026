@@ -27,6 +27,7 @@ import {
 	renderGoType,
 } from "../../type/taggedUnion";
 import { goBuilder as go } from "../../type/goBuilder";
+import { createAbsentFieldValue, getStructFields, type StructField } from "../../type/object";
 import {
 	eitherConversionDependency,
 	either2FromEitherFunctionIdentifier,
@@ -331,6 +332,68 @@ async function coerceToUnion(
 		: context.notSupport();
 }
 
+/**
+ * ADR-14 : struct vers struct (typage structurel de TS) :
+ * `func(s From) To { return To{P_a: conv(s.P_a), …} }(x)`. Un champ absent de la
+ * source doit être optionnel dans la cible (il vaut alors undefined) ; un champ
+ * en trop dans la source est ignoré, comme l'autorise TypeScript.
+ */
+async function convertStruct(
+	params: {
+		readonly expression: GoAST.Expression;
+		readonly fromGoType: GoType;
+		readonly sourceFields: readonly StructField[];
+		readonly toGoType: GoType;
+		readonly targetFields: readonly StructField[];
+	},
+	context: BuildContext,
+): Promise<CoerceResult> {
+	const { expression, fromGoType, sourceFields, toGoType, targetFields } = params;
+	const parameter = context.generateIdentifier();
+	const elements: (readonly [GoAST.Identifier, GoAST.Expression])[] = [];
+
+	for (const field of targetFields) {
+		const source = sourceFields.find((known) => known.name === field.name);
+
+		if (!source) {
+			const absent = createAbsentFieldValue(field, context);
+
+			if (!field.optional || !absent) {
+				return context.notSupport();
+			}
+
+			elements.push([field.identifier, absent]);
+			continue;
+		}
+
+		const read = go.select(parameter, source.identifier);
+		const converted = renderGoType(source.goType) === renderGoType(field.goType)
+			? context.success({ result: read })
+			: await coerceGoExpression({
+				expression: read,
+				fromGoType: source.goType,
+				toGoType: field.goType,
+			}, context);
+
+		if (DEither.isLeft(converted)) {
+			return converted;
+		}
+
+		elements.push([field.identifier, DEither.unwrapRight(converted).result]);
+	}
+
+	return context.success({
+		result: go.call(
+			go.functionLiteral(
+				[go.argument(parameter, fromGoType)],
+				toGoType,
+				[go.return(go.struct(toGoType, elements))],
+			),
+			[expression],
+		),
+	});
+}
+
 /** Fonction Go `func(p From) To` qui applique la coercition `From -> To`. */
 async function createConverter(
 	fromGoType: GoType,
@@ -388,6 +451,19 @@ async function coerceGoExpressionExtended(
 
 	if (!DEither.isLeft(targetMembers)) {
 		return coerceToUnion(params, targetMembers, context);
+	}
+
+	const targetFields = DEither.unwrapRight(getStructFields(toGoType));
+	const sourceFields = DEither.unwrapRight(getStructFields(fromGoType));
+
+	if (!DEither.isLeft(targetFields) && !DEither.isLeft(sourceFields)) {
+		return convertStruct({
+			expression,
+			fromGoType,
+			sourceFields,
+			toGoType,
+			targetFields,
+		}, context);
 	}
 
 	const sourceMembers = DEither.unwrapRight(getUnionMemberGoTypes(fromGoType));

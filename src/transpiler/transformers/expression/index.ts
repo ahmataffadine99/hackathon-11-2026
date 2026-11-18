@@ -22,6 +22,14 @@ import {
 	typeOfExpressionTransformer,
 	unionEqualityTransformer,
 } from "./union";
+import {
+	elementAccessTransformer,
+	inOperatorTransformer,
+	objectLiteralTransformer,
+	parenthesizedExpressionTransformer,
+	propertyAccessTransformer,
+	typeAssertionTransformer,
+} from "./object";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
@@ -34,6 +42,12 @@ export const expressionTransformers = DCommon.memo(
 		stringLiteralTransformer,
 		booleanLiteralTransformer,
 		arrayLiteralTransformer,
+		objectLiteralTransformer,
+		propertyAccessTransformer,
+		elementAccessTransformer,
+		typeAssertionTransformer,
+		inOperatorTransformer,
+		parenthesizedExpressionTransformer,
 		prefixUnaryExpressionTransformer,
 		nullLiteralTransformer,
 		typeOfComparisonTransformer,

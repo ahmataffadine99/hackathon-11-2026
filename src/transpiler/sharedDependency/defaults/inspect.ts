@@ -892,11 +892,196 @@ export const inspectSharedDependency = DCommon.memo(() => {
 			identifier: GoAST.createIdentifier(kind),
 		}),
 	});
+	// ADR-14 : objet (struct anonyme). Clé : tag `js` ; champ optionnel absent
+	// (valeur undefined) : non affiché, comme une propriété absente en JS.
+	const isUndefinedIdentifier = GoAST.createIdentifier("inspectIsUndefined");
+	const fieldIdentifier = GoAST.createIdentifier("field");
+	const keyIdentifier = GoAST.createIdentifier("key");
+	const optionalIdentifier = GoAST.createIdentifier("optional");
+	const fieldValueIdentifier = GoAST.createIdentifier("fieldValue");
+	const selectCall = (
+		target: GoAST.Expression,
+		name: string,
+		args: readonly GoAST.Expression[] = [],
+	) => call(GoAST.createSelectorExpression({
+		target,
+		identifier: GoAST.createIdentifier(name),
+	}), args);
+	const reflectedStructIf = GoAST.createIfStatement({
+		condition: GoAST.createBinaryExpression({
+			operator: "==",
+			left: selectCall(GoAST.createIdentifier("reflected"), "Kind"),
+			right: GoAST.createSelectorExpression({
+				target: GoAST.createIdentifier("reflect"),
+				identifier: GoAST.createIdentifier("Struct"),
+			}),
+		}),
+		body: GoAST.createBlockStatement({
+			statements: [
+				GoAST.createShortVariableDeclarationStatement({
+					identifier: partsVariable,
+					initializer: GoAST.createSliceLiteral({
+						typeReference: sliceOfString,
+						elements: [],
+					}),
+				}),
+				GoAST.createRangeStatement({
+					binding: GoAST.createRangeDeclaration({ key: GoAST.createIdentifier("index") }),
+					expression: selectCall(GoAST.createIdentifier("reflected"), "NumField"),
+					body: GoAST.createBlockStatement({
+						statements: [
+							GoAST.createShortVariableDeclarationStatement({
+								identifier: fieldIdentifier,
+								initializer: selectCall(
+									selectCall(GoAST.createIdentifier("reflected"), "Type"),
+									"Field",
+									[GoAST.createIdentifier("index")],
+								),
+							}),
+							GoAST.createVariableDeclarationZeroValue({
+								identifier: keyIdentifier,
+								typeReference: GoAST.builtinTypeReferences.string,
+							}),
+							GoAST.createVariableDeclarationZeroValue({
+								identifier: optionalIdentifier,
+								typeReference: GoAST.builtinTypeReferences.bool,
+							}),
+							GoAST.createAssignmentStatement({
+								targets: DCommon.cast([keyIdentifier, optionalIdentifier]),
+								values: DCommon.cast([
+									packageCall(stringsIdentifier, "CutSuffix", [
+										selectCall(
+											GoAST.createSelectorExpression({
+												target: fieldIdentifier,
+												identifier: GoAST.createIdentifier("Tag"),
+											}),
+											"Get",
+											[GoAST.createStringLiteral({ value: "js" })],
+										),
+										GoAST.createStringLiteral({ value: ",optional" }),
+									]),
+								]),
+							}),
+							GoAST.createShortVariableDeclarationStatement({
+								identifier: fieldValueIdentifier,
+								initializer: selectCall(
+									selectCall(GoAST.createIdentifier("reflected"), "Field", [GoAST.createIdentifier("index")]),
+									"Interface",
+								),
+							}),
+							GoAST.createIfStatement({
+								condition: GoAST.createBinaryExpression({
+									operator: "&&",
+									left: optionalIdentifier,
+									right: call(isUndefinedIdentifier, [fieldValueIdentifier]),
+								}),
+								body: GoAST.createBlockStatement({
+									statements: [GoAST.createContinueStatement({})],
+								}),
+							}),
+							GoAST.createAssignmentStatement({
+								targets: DCommon.cast([partsVariable]),
+								values: DCommon.cast([
+									call(GoAST.createIdentifier("append"), [
+										partsVariable,
+										concat(
+											call(inspectKeyIdentifier, [keyIdentifier]),
+											GoAST.createStringLiteral({ value: ": " }),
+											call(inspectValueIdentifier, [
+												fieldValueIdentifier,
+												plus(depthParam, GoAST.createIntegerLiteral({ value: 1n })),
+											]),
+										),
+									]),
+								]),
+							}),
+						],
+					}),
+				}),
+				GoAST.createReturnStatement({
+					values: [
+						call(inspectReduceToSingleStringIdentifier, [
+							partsVariable,
+							GoAST.createStringLiteral({ value: "{" }),
+							GoAST.createStringLiteral({ value: "}" }),
+							depthParam,
+						]),
+					],
+				}),
+			],
+		}),
+	});
+	const undefinedBinding = GoAST.createIdentifier("typed");
+	const trueLiteral = GoAST.createBooleanLiteral({ value: true });
+	const inspectIsUndefinedDeclaration = GoAST.createFunctionDeclaration({
+		identifier: isUndefinedIdentifier,
+		generic: [],
+		arguments: [
+			GoAST.createFunctionArgument({
+				identifier: valueParam,
+				type: GoAST.builtinTypeReferences.any,
+			}),
+		],
+		returnTypes: [GoAST.builtinTypeReferences.bool],
+		body: GoAST.createBlockStatement({
+			statements: [
+				GoAST.createTypeSwitchStatementWithoutDefault({
+					expression: valueParam,
+					identifier: undefinedBinding,
+					cases: [
+						GoAST.createTypeSwitchCase({
+							types: DCommon.cast([jsUndefinedType]),
+							statements: [GoAST.createReturnStatement({ values: [trueLiteral] })],
+						}),
+						GoAST.createTypeSwitchCase({
+							types: DCommon.cast([
+								GoAST.createInterfaceType({
+									elements: [
+										GoAST.createInterfaceMethod({
+											identifier: GoAST.createIdentifier("InspectPlain"),
+											arguments: [],
+											returnTypes: [
+												GoAST.builtinTypeReferences.any,
+												GoAST.builtinTypeReferences.bool,
+											],
+										}),
+									],
+								}),
+							]),
+							statements: [
+								GoAST.createVariableDeclarationZeroValue({
+									identifier: plainValueVariable,
+									typeReference: GoAST.builtinTypeReferences.any,
+								}),
+								GoAST.createVariableDeclarationZeroValue({
+									identifier: isPlainVariable,
+									typeReference: GoAST.builtinTypeReferences.bool,
+								}),
+								GoAST.createAssignmentStatement({
+									targets: DCommon.cast([plainValueVariable, isPlainVariable]),
+									values: DCommon.cast([selectCall(undefinedBinding, "InspectPlain")]),
+								}),
+								GoAST.createIfStatement({
+									condition: isPlainVariable,
+									body: GoAST.createBlockStatement({
+										statements: returnCallStatements(isUndefinedIdentifier, [plainValueVariable]),
+									}),
+								}),
+							],
+						}),
+					],
+				}),
+				GoAST.createReturnStatement({ values: [falseLiteral] }),
+			],
+		}),
+	});
+
 	const reflectedSliceStatements = [
 		GoAST.createShortVariableDeclarationStatement({
 			identifier: reflectedIdentifier,
 			initializer: packageCall(reflectIdentifier, "ValueOf", [valueParam]),
 		}),
+		reflectedStructIf,
 		GoAST.createIfStatement({
 			condition: GoAST.createBinaryExpression({
 				operator: "||",
@@ -1178,6 +1363,7 @@ export const inspectSharedDependency = DCommon.memo(() => {
 			inspectIsBelowBreakLengthDeclaration,
 			inspectReduceToSingleStringDeclaration,
 			inspectObjectDeclaration,
+			inspectIsUndefinedDeclaration,
 			inspectValueDeclaration,
 			inspectTopLevelDeclaration,
 			printDeclaration,

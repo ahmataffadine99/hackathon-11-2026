@@ -16,12 +16,14 @@ import { arrayTypeTransformer } from "./array";
 import { homogeneousTupleTypeTransformer } from "./tuple";
 import { readonlyTypeTransformer } from "./readonly";
 import { nullishTypeTransformer } from "./nullish";
-import { typeAliasReferenceTransformer } from "./typeAlias";
+import { typeAliasReferenceTransformer, typeParameterReferenceTransformer } from "./typeAlias";
+import { objectTypeLiteralTransformer } from "./object";
 
 export * from "./goTypeOf";
 
 export const typeTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Type | GoAST.TypeReference>[] => [
+		typeParameterReferenceTransformer,
 		unionTypeTransformer,
 		intersectionTypeTransformer,
 		promiseTypeTransformer,
@@ -38,5 +40,6 @@ export const typeTransformers = DCommon.memo(
 		functionTypeTransformer,
 		nullishTypeTransformer,
 		typeAliasReferenceTransformer,
+		objectTypeLiteralTransformer,
 	],
 );

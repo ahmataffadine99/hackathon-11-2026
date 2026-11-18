@@ -11,6 +11,8 @@ import { goTypeOf, goTypeOfExpression, type GoType } from "../type/goTypeOf";
 import { coerceGoExpression } from "../duplojs/either/coerce";
 import { isExpectedTypeEitherConstructor } from "../duplojs/either/constructor";
 import { type BuildContext } from "../../context/build";
+import { createUndefinedGoType } from "../type/object";
+import { createUnionValue, findUnionMemberIndex, getUnionMemberGoTypes } from "../type/taggedUnion";
 import * as DModeling from "@duplojs/lang/modeling";
 
 /**
@@ -43,6 +45,74 @@ async function coerceInitializer(
 	return DEither.isLeft(coerced) ? expression : DEither.unwrapRight(coerced).result;
 }
 
+/**
+ * ADR-14 : `let x: T;` sans valeur. En JS, `x` vaut undefined jusqu'à sa
+ * première affectation : si T contient undefined, la variable Go est initialisée
+ * à ce membre ; sinon (TypeScript interdit alors sa lecture avant affectation),
+ * à la valeur zéro de T.
+ */
+async function transformUninitializedDeclaration(
+	node: TsAST.VariableStatement,
+	declaration: TsAST.VariableDeclaration,
+	context: BuildContext,
+) {
+	if (!TsAST.isIdentifier(declaration.name) || node.declarationList.flags !== TsAST.NodeFlags.Let) {
+		return context.error(declaration, "missing-variable-initializer");
+	}
+
+	const type = await context.transpilation.typeChecker.getTypeAtLocation(declaration.name);
+	const goType = DEither.unwrapRight(await goTypeOf(type, declaration, context));
+
+	if (DEither.isLeft(goType)) {
+		return goType;
+	}
+
+	const isTopLevel = node.parent?.kind === TsAST.SyntaxKind.SourceFile;
+	const identifier = isTopLevel
+		? context.createTopLevelIdentifier(context.file.currentFilePath, declaration.name.text)
+		: context.createSourceIdentifier(declaration.name.text);
+	const members = DEither.unwrapRight(getUnionMemberGoTypes(goType.result));
+	const undefinedIndex = DEither.isLeft(members)
+		? -1
+		: findUnionMemberIndex(members, createUndefinedGoType(context));
+	const initialValue = undefinedIndex < 0
+		? undefined
+		: createUnionValue(goType.result, undefinedIndex, GoAST.createStructLiteral({
+			typeReference: createUndefinedGoType(context),
+			elements: [],
+		}));
+
+	if (isTopLevel) {
+		context.file.declarations.add(GoAST.createVariableDeclarationZeroValue({
+			identifier,
+			typeReference: goType.result,
+		}));
+
+		// Sans membre undefined : la valeur zéro de la variable de package suffit.
+		return context.success({
+			result: initialValue
+				? GoAST.createAssignmentStatement({
+					targets: DCommon.cast([identifier]),
+					values: DCommon.cast([initialValue]),
+				})
+				: GoAST.createBlockStatement({ statements: [] }),
+		});
+	}
+
+	return context.success({
+		result: initialValue
+			? GoAST.createVariableDeclarationInitialized({
+				identifier,
+				typeReference: DCommon.cast(goType.result),
+				initializer: initialValue,
+			})
+			: GoAST.createVariableDeclarationZeroValue({
+				identifier,
+				typeReference: goType.result,
+			}),
+	});
+}
+
 export const variableStatementTransformer: Transformer<GoAST.Statement> = createTransformer(
 	async(node, context) => {
 		if (!TsAST.isVariableStatement(node)) {
@@ -67,7 +137,7 @@ export const variableStatementTransformer: Transformer<GoAST.Statement> = create
 		}
 
 		if (!declaration.initializer) {
-			return context.error(declaration, "missing-variable-initializer");
+			return transformUninitializedDeclaration(node, declaration, context);
 		}
 
 		const initializer = await DCommon.asyncPipe(

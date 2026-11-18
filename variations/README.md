@@ -150,3 +150,12 @@ Go invalide avant l'ADR-13.
 | `11-either-pipe-errors` | `rightPipe` entre deux fonctions aux erreurs de types différents |
 | `11-void-function` | Fonction sans valeur de retour et `return;` |
 | `11-real-orders` | Trois fichiers, alias de type, trois types d'erreur dans un pipeline, `matchInformation`, paramètre `string \| undefined`, `group` |
+
+## 12 : objets, génériques et boucles (ADR-14)
+
+| Variante | Ce qu'elle vérifie |
+|---|---|
+| `12-object-basic` | `interface` avec propriété optionnelle, littéral `{ name, age }`, spread `{ ...user, email }`, accès `a.b`, objet imbriqué, `.length`, `a[i]` borné (`noUncheckedIndexedAccess`), `??` sur un champ optionnel, `print` d'objets (champ optionnel absent non affiché, `{}`) |
+| `12-object-union` | Union discriminée (`shape.kind === "circle"`), champ commun lu sur l'union, rétrécissement vers un membre, `{ name: string } \| { age: number }` avec `"name" in value`, tableau d'objets, `x!` |
+| `12-generic-alias` | `type Box<T>`, paramètre par défaut (`Pair<A, B = string>`), `interface Page<T> extends Meta`, `Box<Box<string>>` |
+| `12-loops-assign` | `for…of` (avec destructuration d'un tuple hétérogène), `while`, `for` classique, `do…while`, `break`, `continue`, `=`, `+=`, `-=`, `++`, `--`, `let x: number \| undefined;`, réaffectation d'une union, parenthèses, `%` |

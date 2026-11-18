@@ -37,7 +37,7 @@ export const identifierTransformer: Transformer<GoAST.Expression> = createTransf
 	},
 );
 
-async function transformIdentifierReference(node: TsAST.Identifier, context: BuildContext) {
+export async function transformIdentifierReference(node: TsAST.Identifier, context: BuildContext) {
 	const dependencyFile = DEither.unwrapRight(await context.resolveDependencyFile(node));
 
 	if (DEither.isLeft(dependencyFile)) {
