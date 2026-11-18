@@ -143,9 +143,7 @@ func Sourced_check(Sourced_value float64) (shard_dependencies.Either2[shard_depe
 
 ## 4. Limites
 
-- **Objets et interfaces de valeurs** (`{ name, age }`) : non pris en charge. Une struct Go demande un ordre de champs canonique, alors que l'affichage JS suit l'ordre d'insertion.
-- Alias de types **génériques** (`type Box<T> = …`) : refusés (substitution des paramètres non faite).
-- Affectation (`x = …`), `let` réassigné : non pris en charge. Les variables restent immuables, ce qui rend sûre la projection `x.Vi`.
+- Objets, interfaces, alias génériques, affectations et boucles : levés par l'[ADR-14](ADR-14-objects-loops.md).
 - L'information d'un `Left` d'un type inféré est lue dans le texte du type (`typeToString`), car l'API tsgo ne rend pas les arguments d'alias de ces types. **[à vérifier]** : une information qui contient un guillemet échappé.
 - `Information` reste une `string` (16 octets par Either). Passer à un entier connu à la transpilation est la prochaine optimisation du runtime **[à vérifier : non mesuré]**.
 - Transpilation des fichiers en parallèle (T3) : non faite, car la numérotation `Generated_N` deviendrait non déterministe.
