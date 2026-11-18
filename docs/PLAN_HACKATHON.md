@@ -913,6 +913,8 @@ export const awaitExpressionTransformer: Transformer<GoAST.Expression>;
 
 **Ordre de merge : I4 (P1) → P3 (D22) → P2 (D13) → P4 (mesures, plan B, synthèse) → relectures (chacun) → P1 (README, PR, ZIP).**
 
+> **Bilan du Sprint 6 (18/11, P1)** : `main` `f0a10cf` (PR #24, D22 et mesures de 10) : **11/11**, variantes **41/43** (seuls `03-curried-stored` à la transpilation et `10-sync-between` au diff), `test:types` et `test:lint` au vert **[observé, copie jetable]**. Documentation de livraison sur `sprint6/delivery-docs` (`compare-main` : 52 → 52, 0 régression) ; ZIP de répétition sur `dd35826` vérifié par `diff -r` (vide). Ouverts : relectures de P2, P3 et P4 (branches absentes), table « Équipe », ADR-11 (réponse de l'auteur), plan B (après le gel du code), répétitions, PR vers le boilerplate et ZIP final (J4).
+
 #### Définition de « terminé » du Sprint 6
 **11/11 ✅** sur `main` ; variantes : seules `03-curried-stored` et `10-sync-between` (au diff) en échec, et documentées ; `test:types` et `test:lint` au vert ; `docs/relecture.md` complet (chaque fiche et chaque ADR relus par un non-auteur, corrections faites) ; mesures de 10 ; plan B enregistré ; deux répétitions notées sous 10:00 ; table « Équipe » remplie ; PR ouverte vers `duplojs/hackathon-11-2026` ; ZIP produit par `make-zip.sh` et vérifié par `diff -r` contre le commit de tête de la PR ; **chaque PR contient son rapport `compare-main`, collé par P1, et a été mergée par P1**.
 
@@ -1007,12 +1009,12 @@ docs/
 ## 12. Livrables et soutenance (10 min)
 
 ### Checklist de remise
-- [ ] Fork partagé avec l'équipe
-- [ ] README : noms, prénoms et classes de tous les membres
-- [ ] Fiches 01–10 (y compris les limites et les « impossible, parce que… »)
-- [ ] ADR et mesures
-- [ ] PR ouverte vers `duplojs/hackathon-11-2026`
-- [ ] Archive ZIP **identique à la PR** remise à la soutenance
+- [x] Fork partagé avec l'équipe : `ahmataffadine99/hackathon-11-2026`, PR #1 à #24 de plusieurs auteurs
+- [ ] README : noms, prénoms et classes de tous les membres : table « Équipe » vide, à remplir par chaque membre
+- [x] Fiches 01–10 (y compris les limites et les « impossible, parce que… ») : `docs/exercises/00.md` à `10.md`, Go produit vérifié contre `main` (relecture R4, R5)
+- [x] ADR et mesures : ADR-1 à 3, 5, 7 à 12, `docs/measures.md` (01, 05, 09, 10) ; contrôle des liens : 0 lien mort
+- [ ] PR ouverte vers `duplojs/hackathon-11-2026` : au gel final (J4, 12:00), avec l'accord de l'équipe
+- [ ] Archive ZIP **identique à la PR** remise à la soutenance : procédure répétée sur `dd35826` (`diff -r` vide, SHA-256 `c0cd8278…24f4`) ; ZIP final à produire sur la tête de la PR
 
 ### Trame de soutenance
 | Temps | Contenu |
