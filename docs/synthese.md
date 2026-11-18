@@ -1,7 +1,7 @@
 # Synthèse : transpiler DuploJS vers Go
 
 > Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = non encore confirmé par une exécution.
-> État au 17/11 au soir : **exercices 00 à 09 identiques à TypeScript (10/11)** ; variantes **37/38** ; exercice 10 au Sprint 5 **[observé, `./scripts/check-all.sh` et `--variations` sur `main` `0f71e59`]**.
+> État au 18/11 : **exercices 00 à 10 identiques à TypeScript (11/11)** ; variantes **39/43** sur `main` `699fbaf`, **41/43** avec le correctif D22 (en cours de merge) **[observé, `./scripts/check-all.sh` et `--variations`]**. Les deux variantes restantes sont des limites assumées (`03-curried-stored`, `10-sync-between`). Au gel, ces totaux sont repris de `docs/demo/check-all.txt` et `docs/demo/variations.txt` (commit livré).
 
 ## La réponse en une phrase
 
@@ -52,9 +52,9 @@ Go n'a pas de ternaire : `c ? a : b` donne `var t T ; if c { t = a } else { t = 
 
 ## Résultats
 
-- **Fonctionnels [observé]** : 00 à 09 donnent une sortie Go **identique** à celle de TypeScript (`diff` vide), ainsi que 37 variantes sur 38 (alias, ordre des unions, `else if` avec effets, `-0`, `NaN`, tableaux vides, closures, court-circuit…).
-- **De bout en bout [observé, `docs/measures.md`, Apple M4]** : le binaire Go s'exécute en environ **2 ms** contre environ **20 ms** pour Node sur le JS compilé (environ **10 fois**), avec environ **12 fois moins** de mémoire résidente (3 Mo contre 37 Mo). Ces programmes sont minuscules : c'est surtout le **démarrage** qui est mesuré.
-- **Allocations [observé]** : 0 échappement dans le code utilisateur de l'ex. 01 ; en 05 et 09, seuls les **slices** vont sur le tas.
+- **Fonctionnels [observé]** : 00 à 10 donnent une sortie Go **identique** à celle de TypeScript (`diff` vide), ainsi que 39 variantes sur 43 sur `main` `699fbaf`, 41 avec le correctif D22 (alias, ordre des unions, `else if` avec effets, `-0`, `NaN`, tableaux vides, closures, court-circuit, arrêt d'`asyncGroup` au premier échec…).
+- **De bout en bout [observé, `docs/measures.md`, Apple M4, 01, 05, 09 et 10]** : le binaire Go s'exécute en environ **2 ms** contre **17 à 21 ms** pour Node sur le JS compilé (environ **8,5 à 10 fois** selon la mesure, 17/11 ou 18/11 : la variation vient du côté Node), avec environ **12 fois moins** de mémoire résidente (3 Mo contre 37 Mo). Ces programmes sont minuscules : c'est surtout le **démarrage** qui est mesuré.
+- **Allocations [observé]** : 0 échappement dans le code utilisateur de l'ex. 01 ; en 05, 09 et 10, seuls les **slices** vont sur le tas (aucune closure, aucun `Either`, aucune goroutine).
 - **Tuples [observé, ADR-11, `research/tuples`]** : `[3]float64` est environ **5,3 fois plus rapide** que `[]float64`, avec 0 allocation contre 1000. Nous avons gardé `[]T` (cohérence des unions tableau et tuple de 02 à 06) : c'est une **piste d'optimisation chiffrée**, non retenue avant le gel.
 - **Asynchronisme [observé, `research/async`]** : des futures (goroutine et channel), même séquentielles, coûtent environ **55 fois** plus que l'exécution synchrone sur la logique de l'ex. 10 (759,9 contre 13,7 ns/op, 10 allocations contre 1).
 
@@ -63,7 +63,7 @@ Go n'a pas de ternaire : `c ? a : b` donne `var t T ; if c { t = a } else { t = 
 | Limite | Pourquoi | Preuve |
 |---|---|---|
 | Forme curryfiée **stockée sans contexte** (`const step = whenIsRight(coalescing)`) | TypeScript lui-même la type `(input: unknown) => unknown` : aucun type Go n'est déductible. Erreur explicite plutôt qu'un type inventé. | Variante `03-curried-stored`, ADR-7 §5 |
-| **Réordonnancement asynchrone** | L'option A exécute les combinateurs async **au point d'appel**. En JS, leurs étapes ne démarrent qu'après le code synchrone qui suit. Un effet placé entre l'appel et le `await` serait réordonné. Fidèle pour l'ex. 10, où rien ne s'y trouve. | Sonde `tsx` (PLAN §0.7), variante `10-sync-between` (Sprint 5) |
+| **Réordonnancement asynchrone** | L'option A exécute les combinateurs async **au point d'appel**. En JS, leurs étapes ne démarrent qu'après le code synchrone qui suit. Un effet placé entre l'appel et le `await` serait réordonné. Fidèle pour l'ex. 10, où rien ne s'y trouve. | Sonde `tsx` (point d'équipe du Sprint 5) ; variante `10-sync-between` : même valeur finale, échec au diff seulement (avec D22) ; [ADR-5](decisions/ADR-5-async.md) |
 | Unions à **plusieurs types de gauche** différents | Ni `Either[V]` ni `Either2[L, R]` ne les représentent ; il faudrait une union fermée générée. | ADR-12 |
 | Tuples **hétérogènes** (`[string, number]`) | Il faudrait une struct par forme de tuple ; refusés explicitement. | ADR-11 |
 | `x \|\| défaut` sur des valeurs **non booléennes** | La « truthiness » de JS n'a pas d'équivalent typé ; refusé. | ADR-8 |

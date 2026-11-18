@@ -53,6 +53,39 @@ Retenir **A**. L'implémentation réutilise les handlers séquentiels existants 
 la boucle de groupement, et `DCommon.asyncPipe` reprend `pipe`. Aucun
 parallélisme, goroutine ou channel n'est généré.
 
+## Mesures de l'option B [observé]
+
+Prototype Go écrit à la main de la logique de l'exercice 10 :
+[`research/async/`](../../research/async/) ([`results.txt`](../../research/async/results.txt)).
+Apple M4 (10 cœurs), macOS 15.6.1, go1.27.4 darwin/arm64, 17/11/2026.
+Commande : `go test -run '^$' -bench . -benchmem -count 5 ./...` (depuis `research/async`).
+Médiane de 5 passes [min..max] ; B/op, allocs/op et goroutines/op sont identiques
+sur les 5 passes.
+
+| Scénario | Version | ns/op médian [min..max] | B/op | allocs/op | goroutines/op |
+|---|---|---:|---:|---:|---:|
+| Entrées de l'ex. 10 (3e calcul en échec) | **A** (synchrone) | **13,7** [13,5..14,6] | 16 | 1 | 0 |
+| | B séquentielle (futures) | 759,9 [755,8..761,7] | 592 | 10 | 3 |
+| | B parallèle (interdite par la sémantique) | 937,0 [932,7..940,5] | 592 | 10 | 3 |
+| Tout succès | **A** | **91,5** [91,4..92,0] | 50 | 2 | 0 |
+| | B séquentielle | 886,8 [883,7..888,5] | 626 | 11 | 3 |
+| | B parallèle (interdite) | 1 034,0 [1 032,0..1 042,0] | 626 | 11 | 3 |
+
+Les tests du prototype vérifient que A et B donnent la même sortie. Après un
+échec au 1er calcul, A et B n'appellent qu'**une** fabrique, comme DuploJS ;
+la version parallèle en appelle **trois**, d'où son interdiction.
+
+**Ce qu'on en conclut :** sur cette logique, B séquentielle coûte environ
+**55 fois** le temps de A sur les entrées de l'exercice, et environ **10 fois**
+en cas de succès complet, avec 9 allocations et 3 goroutines de plus par
+exécution. C'est le coût du **mécanisme** (goroutine, channel,
+synchronisation) sur un calcul trivial, que B n'apporte rien à compenser
+puisque la sémantique est séquentielle.
+
+**Ce qu'on n'en conclut pas :** le coût de futures dans un programme qui fait
+de vraies entrées-sorties (réseau, fichiers), où le parallélisme peut
+redevenir utile. Les exercices n'en contiennent aucune.
+
 ## Conséquences et limites
 
 - Les chemins sans effet synchrone intercalé conservent les valeurs, l'ordre et
