@@ -6,12 +6,12 @@ Peut-on transpiler du DuploJS vers Go pour obtenir un programme performant tout 
 
 ## Équipe
 
-| Nom | Prénom | Classe |
-|---|---|---|
-|  |  |  |
-|  |  |  |
-|  |  |  |
-|  |  |  |
+| Nom      | Prénom            | Classe |
+|----------|-------------------|--------|
+|EL WARDI  |Abderrazzak        | 5IWJ   |
+|MAARIFI   |ZAKARIA            | 5IWJ   |
+|BAKAYOKO  |BAKAGNAN           | 5IWJ   |
+|AHMAT  |  |Abdoulaye Affadine | 5IWJ   |
 
 ## Avancement
 
