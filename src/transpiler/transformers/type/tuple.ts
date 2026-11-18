@@ -21,6 +21,13 @@ export const homogeneousTupleTypeTransformer: Transformer<GoAST.SliceType> = cre
 			DGenerator.asyncReduce(
 				DGenerator.reduceFrom<readonly (GoAST.Type | GoAST.TypeReference)[]>([]),
 				async({ item, lastValue, next, exit }) => {
+					// D22 : `never` est l'élément neutre de l'union des éléments (T | never = T).
+					// `Success<[1, never, 3]>` (asyncGroup dont la 2e fabrique échoue toujours)
+					// décrit un succès impossible ; les autres positions donnent le type Go.
+					if (item.kind === TsAST.SyntaxKind.NeverKeyword) {
+						return next(lastValue);
+					}
+
 					if (
 						TsAST.isNamedTupleMember(item)
 						|| TsAST.isOptionalTypeNode(item)

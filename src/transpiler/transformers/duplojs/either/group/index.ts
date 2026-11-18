@@ -12,13 +12,36 @@ import {
 	either2FromLeftFunctionIdentifier,
 	either2SuccessFunctionIdentifier,
 	eitherDependency,
+	eitherSuccessFunctionIdentifier,
 } from "../sharedDependency";
-import { getEither2GoTypes, getEitherValueAccess } from "../goType";
+import { getEither2GoTypes, getEitherValueAccess, getEitherValueGoType } from "../goType";
+import { eitherVariantNames } from "../coerce";
 
 const makeIdentifier = GoAST.createIdentifier("make");
 const lenIdentifier = GoAST.createIdentifier("len");
 const appendIdentifier = GoAST.createIdentifier("append");
 const isLeftIdentifier = GoAST.createIdentifier("IsLeft");
+
+function selectResultTypes(params: {
+	either2Types: ReturnType<typeof DEither.unwrapRight<ReturnType<typeof getEither2GoTypes>>>;
+	eitherValueType: ReturnType<typeof DEither.unwrapRight<ReturnType<typeof getEitherValueGoType>>>;
+	leftIsPossible: boolean;
+}) {
+	const { either2Types, eitherValueType, leftIsPossible } = params;
+
+	if (!DEither.isLeft(either2Types)) {
+		return either2Types;
+	}
+
+	if (DEither.isLeft(eitherValueType) || leftIsPossible) {
+		return undefined;
+	}
+
+	return {
+		leftType: undefined,
+		rightType: eitherValueType,
+	};
+}
 
 export async function groupExpressionHandler(
 	node: TsAST.Node,
@@ -66,10 +89,26 @@ export async function groupExpressionHandler(
 		return resultGoType;
 	}
 
-	const resultTypes = DEither.unwrapRight(getEither2GoTypes(resultGoType.result));
+	// Deux formes de résultat (ADR-12, D22) :
+	// - Either2[L, []R] : le type de l'appel contient des gauches (premier gauche renvoyé) ;
+	// - Either[[]R] : aucun gauche possible d'après le type TS de l'appel (toutes les
+	//   fabriques réussissent, ex. `Success<[1, 2]>`) ; la boucle n'a pas de test IsLeft.
+	const either2Types = DEither.unwrapRight(getEither2GoTypes(resultGoType.result));
+	const eitherValueType = DEither.unwrapRight(getEitherValueGoType(resultGoType.result));
+	const resultVariants = await eitherVariantNames(
+		await context.transpilation.typeChecker.getTypeAtLocation(node),
+		context,
+	);
+	const leftIsPossible = DArray.some(resultVariants, (name) => name === "Left" || name === "Fail");
 
-	if (DEither.isLeft(resultTypes)) {
-		return context.error(node, "duplojs-either-group-result-is-not-either2");
+	const resultTypes = selectResultTypes({
+		either2Types,
+		eitherValueType,
+		leftIsPossible,
+	});
+
+	if (!resultTypes) {
+		return context.error(node, "duplojs-either-group-unsupported-result-type");
 	}
 
 	let elementType = arrayGoType.result.elementType;
@@ -96,7 +135,10 @@ export async function groupExpressionHandler(
 		return context.error(arrayNode, "duplojs-either-group-elements-are-not-eithers");
 	}
 
-	if (GoPrinter.renderNode(valueAccess.valueType) !== GoPrinter.renderNode(resultTypes.leftType)) {
+	if (
+		resultTypes.leftType
+		&& GoPrinter.renderNode(valueAccess.valueType) !== GoPrinter.renderNode(resultTypes.leftType)
+	) {
 		return context.error(node, "duplojs-either-group-left-type-mismatch");
 	}
 
@@ -115,13 +157,14 @@ export async function groupExpressionHandler(
 		elementType: resultTypes.rightType.elementType,
 	});
 
-	const leftConstructor = GoAST.createCallExpression({
+	const { leftType } = resultTypes;
+	const leftConstructor = leftType && GoAST.createCallExpression({
 		callee: GoAST.createInstantiationExpression({
 			target: GoAST.createSelectorExpression({
 				target: packageName,
 				identifier: either2FromLeftFunctionIdentifier,
 			}),
-			typeArguments: DCommon.cast([resultTypes.leftType, resultTypes.rightType]),
+			typeArguments: DCommon.cast([leftType, resultTypes.rightType]),
 		}),
 		arguments: [valueIdentifier],
 	});
@@ -129,9 +172,11 @@ export async function groupExpressionHandler(
 		callee: GoAST.createInstantiationExpression({
 			target: GoAST.createSelectorExpression({
 				target: packageName,
-				identifier: either2SuccessFunctionIdentifier,
+				identifier: leftType ? either2SuccessFunctionIdentifier : eitherSuccessFunctionIdentifier,
 			}),
-			typeArguments: DCommon.cast([resultTypes.leftType, resultTypes.rightType]),
+			typeArguments: leftType
+				? DCommon.cast([leftType, resultTypes.rightType])
+				: DCommon.cast([resultTypes.rightType]),
 		}),
 		arguments: [outputIdentifier],
 	});
@@ -144,6 +189,34 @@ export async function groupExpressionHandler(
 			}),
 		})
 		: undefined;
+
+	// Test « premier gauche » : seulement si un gauche est possible (forme Either2).
+	const leftCheck: readonly GoAST.Statement[] = leftConstructor
+		? [
+			GoAST.createIfStatement({
+				condition: GoAST.createCallExpression({
+					callee: GoAST.createSelectorExpression({
+						target: valueIdentifier,
+						identifier: isLeftIdentifier,
+					}),
+					arguments: [],
+				}),
+				body: GoAST.createBlockStatement({
+					statements: [
+						GoAST.createAssignmentStatement({
+							targets: DCommon.cast([resultIdentifier]),
+							values: DCommon.cast([leftConstructor]),
+						}),
+						GoAST.createAssignmentStatement({
+							targets: DCommon.cast([hasLeftIdentifier]),
+							values: DCommon.cast([GoAST.createBooleanLiteral({ value: true })]),
+						}),
+						GoAST.createBreakStatement({}),
+					],
+				}),
+			}),
+		]
+		: [];
 
 	return context.success({
 		before: [
@@ -166,10 +239,14 @@ export async function groupExpressionHandler(
 					]),
 				}),
 			}),
-			GoAST.createShortVariableDeclarationStatement({
-				identifier: hasLeftIdentifier,
-				initializer: GoAST.createBooleanLiteral({ value: false }),
-			}),
+			...(leftConstructor
+				? [
+					GoAST.createShortVariableDeclarationStatement({
+						identifier: hasLeftIdentifier,
+						initializer: GoAST.createBooleanLiteral({ value: false }),
+					}),
+				]
+				: []),
 			GoAST.createVariableDeclarationZeroValue({
 				identifier: resultIdentifier,
 				typeReference: resultGoType.result,
@@ -183,28 +260,7 @@ export async function groupExpressionHandler(
 				body: GoAST.createBlockStatement({
 					statements: [
 						...(elementValue ? [elementValue] : []),
-						GoAST.createIfStatement({
-							condition: GoAST.createCallExpression({
-								callee: GoAST.createSelectorExpression({
-									target: valueIdentifier,
-									identifier: isLeftIdentifier,
-								}),
-								arguments: [],
-							}),
-							body: GoAST.createBlockStatement({
-								statements: [
-									GoAST.createAssignmentStatement({
-										targets: DCommon.cast([resultIdentifier]),
-										values: DCommon.cast([leftConstructor]),
-									}),
-									GoAST.createAssignmentStatement({
-										targets: DCommon.cast([hasLeftIdentifier]),
-										values: DCommon.cast([GoAST.createBooleanLiteral({ value: true })]),
-									}),
-									GoAST.createBreakStatement({}),
-								],
-							}),
-						}),
+						...leftCheck,
 						GoAST.createAssignmentStatement({
 							targets: DCommon.cast([outputIdentifier]),
 							values: DCommon.cast([
@@ -223,20 +279,25 @@ export async function groupExpressionHandler(
 					],
 				}),
 			}),
-			GoAST.createIfStatement({
-				condition: GoAST.createUnaryExpression({
-					operator: "!",
-					operand: hasLeftIdentifier,
+			leftConstructor
+				? GoAST.createIfStatement({
+					condition: GoAST.createUnaryExpression({
+						operator: "!",
+						operand: hasLeftIdentifier,
+					}),
+					body: GoAST.createBlockStatement({
+						statements: [
+							GoAST.createAssignmentStatement({
+								targets: DCommon.cast([resultIdentifier]),
+								values: DCommon.cast([successConstructor]),
+							}),
+						],
+					}),
+				})
+				: GoAST.createAssignmentStatement({
+					targets: DCommon.cast([resultIdentifier]),
+					values: DCommon.cast([successConstructor]),
 				}),
-				body: GoAST.createBlockStatement({
-					statements: [
-						GoAST.createAssignmentStatement({
-							targets: DCommon.cast([resultIdentifier]),
-							values: DCommon.cast([successConstructor]),
-						}),
-					],
-				}),
-			}),
 		],
 		result: resultIdentifier,
 	});

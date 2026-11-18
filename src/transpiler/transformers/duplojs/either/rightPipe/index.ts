@@ -2,6 +2,7 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST, GoPrinter } from "@go";
 import { TsAST } from "@typescript";
+import { TypeFlags } from "typescript/async";
 import { type NotfoundTransformer, type TransformationError } from "@transformer";
 import { type BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
@@ -179,6 +180,28 @@ async function parameterIsRead(
 	}
 
 	return DEither.right("parameter-read", false);
+}
+
+// D22 : une étape dont le paramètre est typé `never` par TypeScript ne peut jamais être
+// appelée (l'étape précédente, ou l'entrée, ne produit que des gauches). C'est fidèle à
+// JS, où rightPipe s'arrête au premier gauche : le pipe s'arrête AVANT cette étape, au
+// lieu de traduire un paramètre `never` qui n'a pas de type Go.
+async function isUnreachableStep(node: TsAST.Expression, context: BuildContext) {
+	if (!TsAST.isArrowFunction(node) && !TsAST.isFunctionExpression(node)) {
+		return false;
+	}
+
+	const [parameter] = node.parameters;
+
+	if (!parameter) {
+		return false;
+	}
+
+	const { typeChecker } = context.transpilation;
+	const signature = await typeChecker.getSignatureFromDeclaration(node);
+	const parameterType = await typeChecker.getParameterType(signature, 0);
+
+	return (parameterType.flags & TypeFlags.Never) !== 0;
 }
 
 async function resolveRightPipeCallback(
@@ -454,6 +477,10 @@ export async function rightPipeExpressionHandler(
 	const resolvedCallbacks: Callback[] = [];
 
 	for (const callbackNode of callbackNodes) {
+		if (await isUnreachableStep(callbackNode, context)) {
+			break;
+		}
+
 		const callback = DEither.unwrapRight(
 			await resolveRightPipeCallback(callbackNode, context),
 		);
