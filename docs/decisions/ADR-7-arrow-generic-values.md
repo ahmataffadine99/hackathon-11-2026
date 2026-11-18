@@ -5,7 +5,7 @@
 - **Code :** [`duplojs/application.ts`](../../src/transpiler/transformers/duplojs/application.ts) (`resolveExpectedSignature`, `createFunctionValue`, `resolveCallback`), [`expression/arrowFunction.ts`](../../src/transpiler/transformers/expression/arrowFunction.ts), [`array/coalescing.ts`](../../src/transpiler/transformers/duplojs/array/coalescing.ts), [`string/to.ts`](../../src/transpiler/transformers/duplojs/string/to.ts)
 - **Corrige :** D15 (02, 03 et 04 bloqués sur `DArray.coalescing` passé en valeur)
 
-> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[hypothèse]** = raisonnement non encore vérifié.
+> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = raisonnement non encore vérifié.
 
 ---
 

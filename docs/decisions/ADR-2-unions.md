@@ -4,7 +4,7 @@
 - **Date :** 2026-11-17
 - **Dépend de :** [ADR-1](ADR-1-either.md) (représentation `Either[V]`)
 
-> Légende : **[observé]** = exécuté ou mesuré ; **[hypothèse]** = non vérifié.
+> Légende : **[observé]** = exécuté ou mesuré ; **[à vérifier]** = non vérifié.
 
 ## 1. Contexte
 

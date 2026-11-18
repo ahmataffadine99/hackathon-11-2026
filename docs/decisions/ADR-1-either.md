@@ -5,7 +5,7 @@
 - **Prototype et mesures :** [`research/either/`](../../research/either/)
 - **Reproduire :** `./research/either/run.sh` (sortie brute : [`research/either/results.txt`](../../research/either/results.txt))
 
-> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[hypothèse]** = raisonnement non encore vérifié.
+> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = raisonnement non encore vérifié.
 
 ---
 
@@ -99,7 +99,7 @@ Sur les 4 passes, `Map1000` est **5 à 8 fois plus lent** avec B ou C qu'avec A.
   `c/scenario.go:22:21: one + two escapes to heap`
   `c/scenario.go:34:23: value / divisor escapes to heap`
 
-### Pourquoi A' uniforme est environ 3,5 fois plus lent que A [observé + hypothèse]
+### Pourquoi A' uniforme est environ 3,5 fois plus lent que A [observé + à vérifier]
 
 L'inlining est identique (`-gcflags=-m=2`). En revanche, `go tool objdump` de `MapCalculate` montre que le struct de 32 octets de A est stocké dans le slice avec la barrière rapide `runtime.gcWriteBarrier2`, alors que le struct de 40 octets d'A' passe par **`runtime.wbMove`**, une copie générique avec barrière d'écriture **[observé]**. Notre explication est que le compilateur a des chemins spécialisés pour les petits structs, et qu'au-delà il bascule sur une copie générique plus lente **[hypothèse : à confirmer avec un profil CPU]**.
 Conséquence pratique : **il ne faut pas élargir le struct « au cas où »**. On génère la forme la plus petite qui suffit.
@@ -151,10 +151,10 @@ Le passage de A vers A' est une **coercition explicite**, c'est-à-dire une copi
 
 | Point | Statut |
 |---|---|
-| Cause exacte de la lenteur d'A' uniforme (`wbMove`) | **[hypothèse]**, faire un profil CPU. Changer l'ordre des champs pourrait aussi aider. |
+| Cause exacte de la lenteur d'A' uniforme (`wbMove`) | **[à vérifier]**, faire un profil CPU. Changer l'ordre des champs pourrait aussi aider. |
 | Coût d'`Either2` pour l'exercice 09 | **[observé]** `group` ne renvoie qu'**un** `Either2` (inclus dans `MapGroup1000`, +6 µs et +8 Ko pour le `[]float64`). Un **slice** d'`Either2` (cas A' uniforme) coûte 3,5 fois le temps, raison de plus pour le réserver aux unions hétérogènes. |
 | Format `util.inspect` complet (objets courts sur une ligne, tableaux > 6 éléments, échappement des chaînes) | **[à vérifier]** avec la Personne 3, seuls les cas du scénario sont couverts |
-| `DString.to(-0)`, exposants, `NaN` | **[hypothèse]** : `inspect.ToString` imite `String(n)`, à confirmer par la fiche sémantique (Q4) |
+| `DString.to(-0)`, exposants, `NaN` | **[à vérifier]** : `inspect.ToString` imite `String(n)`, à confirmer par la fiche sémantique (Q4) |
 | Variabilité des temps | **[observé]** Sur 4 passes complètes, les temps de B et C ont varié jusqu'à +40 % (portable, VM Docker), et ceux de A de moins de 10 %. Les allocations sont identiques à chaque passe. La décision repose sur les **allocations** et sur des **ratios** qui sont restés d'au moins 5 fois en faveur de A. Pour des chiffres de soutenance, il faudra relancer sur une machine au repos, sur secteur, avec `-count 10` et `benchstat`. |
 | Mesures hors VM (Go natif Windows) | Impossibles sur nos postes : Smart App Control bloque `go.exe` et les binaires de test non signés (journal CodeIntegrity, événement 3077). D'où Docker. |
 | `right(info, v)` (droite avec information autre que `success`) | Supporté par la représentation (`KindRight`), non utilisé par les exercices |

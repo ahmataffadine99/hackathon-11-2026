@@ -4,7 +4,7 @@
 - **Date :** 2026-11-17
 - **Code :** [`either/matchInformation/index.ts`](../../src/transpiler/transformers/duplojs/either/matchInformation/index.ts)
 
-> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[hypothèse]** = raisonnement non encore vérifié.
+> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = raisonnement non encore vérifié.
 
 ---
 

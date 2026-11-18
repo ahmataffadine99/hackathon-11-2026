@@ -5,7 +5,7 @@
 - **Code :** [`duplojs/application.ts`](../../src/transpiler/transformers/duplojs/application.ts) (`createFunctionValue`), [`either/whenIsRight/`](../../src/transpiler/transformers/duplojs/either/whenIsRight/index.ts), [`common/pipe/`](../../src/transpiler/transformers/duplojs/common/pipe/index.ts)
 - **Scénario de mesure :** [`research/functions/pipe-whenisright/`](../../research/functions/pipe-whenisright/)
 
-> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[hypothèse]** = raisonnement non encore vérifié.
+> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = raisonnement non encore vérifié.
 
 ---
 
@@ -95,7 +95,7 @@ Les seules allocations signalées sont dans `shard_dependencies` (`Print`, `Insp
 |---|---|
 | **02 et 03 ne transpilent pas encore** : le premier échec est maintenant `DArray.coalescing` (P2, routeur `array`), alors qu'avant ce sprint c'était `whenIsRight` / `pipe`. Il faudra ensuite les types tableau (D12) et la forme `Plain` de l'ADR-2 (P4). | Dépend de P2 et P4 |
 | **Bouchons locaux** : `goTypeOf` (P4) est remplacé par `typeToTypeNode` + `typeTransformers` (la recette de `print`), et `coerceExpression` (P4) par l'identité seule (refus explicite `duplojs-either-whenisright-heterogeneous-union-not-supported` sinon). Ils sont privés à `application.ts` et `whenIsRight/`, et doivent être remplacés par les appels au contrat §8 dès le merge de P4. | À retirer au merge de P4 |
-| **Forme curryfiée stockée puis réutilisée** (`const g = whenIsRight(f); g(a); g(b)`) : le `func` literal est rangé dans une variable, il n'est plus inliné et peut s'échapper. Hors des exercices 01 à 10. | Non mesuré **[hypothèse]** |
+| **Forme curryfiée stockée puis réutilisée** (`const g = whenIsRight(f); g(a); g(b)`) : le `func` literal est rangé dans une variable, il n'est plus inliné et peut s'échapper. Hors des exercices 01 à 10. | Non mesuré **[à vérifier]** |
 | **Fonction générique utilisateur passée en valeur** (`function id<T>(x: T)` puis `whenIsRight(e, id)`) : l'identifiant Go désignerait une fonction générique non instanciée (D1). Il faudrait passer par `createFunctionValue` comme pour `coalescing`. | Non pris en charge |
 | **Signature surchargée** : `createFunctionValue` prend la première signature d'appel. | Hors périmètre |
 | **`print` d'une valeur Plain** : `Print` teste maintenant `interface{ InspectPlain() (any, bool) }` avant `Inspectable` ([`defaults/inspect.ts`](../../src/transpiler/sharedDependency/defaults/inspect.ts)). L'AST ne représente pas `a, b := f()` : le Go déclare les deux variables puis les affecte (`a, b = f()`). Vérifié par [`research/either/plain/`](../../research/either/plain/plain_test.go) (`[ 3 ]` pour un Plain de `[]float64{3}`). Il faut encore que P4 ajoute la méthode `InspectPlain` sur `Either[V]`. | Attend P4 |

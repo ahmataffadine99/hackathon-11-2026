@@ -13,20 +13,20 @@ JavaScript n'exécute pas.
 
 ## Sémantique observée
 
-- **[vérifié]** `asyncGroup` traite les fabriques dans l'ordre et attend chacune
+- **[observé]** `asyncGroup` traite les fabriques dans l'ordre et attend chacune
   avant d'appeler la suivante. La troisième fabrique n'est pas appelée après un
   `Left`. Source : `node_modules/@duplojs/lang/dist/either/right/asyncGroup.mjs`
   et son `asyncReduce`.
-- **[vérifié]** `rightAsyncPipe` attend l'entrée, propage un `Left`, puis appelle
+- **[observé]** `rightAsyncPipe` attend l'entrée, propage un `Left`, puis appelle
   séquentiellement les étapes et s'arrête au premier `Left`. Une valeur finale
   nue est enveloppée une seule fois dans `Success`.
   Source : `node_modules/@duplojs/lang/dist/either/right/asyncPipe.mjs`.
-- **[vérifié]** `DCommon.asyncPipe` attend l'entrée puis chaque étape, dans
+- **[observé]** `DCommon.asyncPipe` attend l'entrée puis chaque étape, dans
   l'ordre. Source : `node_modules/@duplojs/lang/dist/common/asyncPipe.mjs`.
-- **[vérifié]** dans `variations/10-sync-between`, le code synchrone qui suit la
+- **[observé]** dans `variations/10-sync-between`, le code synchrone qui suit la
   création du combinateur s'affiche avant les fabriques, qui ne démarrent qu'au
   `await`.
-- **[vérifié]** le corps d'une fonction `async` démarre dès son appel ; son
+- **[observé]** le corps d'une fonction `async` démarre dès son appel ; son
   résultat est ensuite une `Promise`.
 
 La sortie TypeScript brute de l'exercice 10 est :

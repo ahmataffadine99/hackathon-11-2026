@@ -5,7 +5,7 @@
 - **Code :** [`expression/conditional.ts`](../../src/transpiler/transformers/expression/conditional.ts), [`expression/binary.ts`](../../src/transpiler/transformers/expression/binary.ts)
 - **Corrige :** D2 (`&&` et `||` évaluaient toujours l'opérande de droite)
 
-> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[hypothèse]** = raisonnement non encore vérifié.
+> Légende : **[observé]** = exécuté ou mesuré, la preuve est citée ; **[à vérifier]** = raisonnement non encore vérifié.
 
 ---
 
@@ -55,4 +55,4 @@ if Generated_24 {
 
 - `||` et `&&` sur des valeurs non booléennes (repli par « truthiness ») : non pris en charge (voir §2).
 - `??` (coalescence des nuls) et `?.` : non pris en charge.
-- Dans `one < 0 || two < 0`, la droite a des préparations, parce que le transformer binaire sort ses opérandes dans des variables. On obtient donc la forme `if` alors qu'un `||` natif aurait suffi. C'est correct, mais plus verbeux qu'un humain. **[hypothèse]** : le compilateur Go produit le même code machine (non mesuré).
+- Dans `one < 0 || two < 0`, la droite a des préparations, parce que le transformer binaire sort ses opérandes dans des variables. On obtient donc la forme `if` alors qu'un `||` natif aurait suffi. C'est correct, mais plus verbeux qu'un humain. **[à vérifier]** : le compilateur Go produit le même code machine (non mesuré).
