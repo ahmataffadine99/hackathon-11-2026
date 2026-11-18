@@ -6,6 +6,7 @@ import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { typeTransformers } from ".";
+import { createUnionGoType } from "./taggedUnion";
 
 // Tuple HOMOGÈNE (`[T]`, `[T, T]`) : []T (décision ADR-2 pour le Sprint 2 ;
 // la forme [N]T est reportée à l'exercice 08). Un tuple hétérogène, vide,
@@ -64,14 +65,25 @@ export const homogeneousTupleTypeTransformer: Transformer<GoAST.SliceType> = cre
 			(elementType) => GoPrinter.renderNode(elementType) === GoPrinter.renderNode(firstType),
 		);
 
-		if (!firstType || !isHomogeneous) {
-			// Tuple hétérogène : struct anonyme prévue à l'exercice 08 (PLAN §6).
+		if (!firstType) {
+			return context.notSupport();
+		}
+
+		// ADR-14 : tuple HÉTÉROGÈNE (`[string, number]`) : slice d'une union
+		// étiquetée des types d'éléments. Il reste un tableau en JS (affichage,
+		// indexation, destructuration) ; la lecture d'une position est rétrécie
+		// vers le type que TypeScript connaît à cette position.
+		const elementType = isHomogeneous
+			? firstType
+			: createUnionGoType(elementTypes, context);
+
+		if (!elementType) {
 			return context.notSupport();
 		}
 
 		return context.success({
 			result: GoAST.createSliceType({
-				elementType: firstType,
+				elementType: elementType as Parameters<typeof GoAST.createSliceType>[0]["elementType"],
 			}),
 		});
 	},

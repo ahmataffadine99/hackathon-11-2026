@@ -268,14 +268,19 @@ export async function resolveCurrentFileTopLevelName(
 }
 
 /**
- * Déclaration d'un ALIAS DE TYPE du projet (hors node_modules) désigné par
- * `typeName`, nœud réel ou synthétique (typeToTypeNode garde le nom des alias).
+ * Déclarations de TYPE du projet (hors node_modules) désignées par `typeName`,
+ * nœud réel ou synthétique (typeToTypeNode garde le nom des alias et des
+ * interfaces) : un alias, ou les déclarations (fusionnées) d'une interface.
  */
-export async function resolveProjectTypeAlias(
-	typeName: TsAST.EntityName,
+export async function resolveProjectTypeDeclarations(
+	typeName: TsAST.EntityName | TsAST.Expression,
 	context: BuildContext,
 ) {
-	if (!TsAST.isIdentifier(typeName) && !TsAST.isQualifiedName(typeName)) {
+	if (
+		!TsAST.isIdentifier(typeName)
+		&& !TsAST.isQualifiedName(typeName)
+		&& !TsAST.isPropertyAccessExpression(typeName)
+	) {
 		return DEither.none();
 	}
 
@@ -284,19 +289,28 @@ export async function resolveProjectTypeAlias(
 		DEither.unwrapRight,
 	);
 
-	if (DEither.isLeft(reference) || (reference.symbol.flags & SymbolFlags.TypeAlias) === 0) {
+	if (
+		DEither.isLeft(reference)
+		|| (reference.symbol.flags & (SymbolFlags.TypeAlias | SymbolFlags.Interface)) === 0
+	) {
 		return DEither.none();
 	}
 
-	const handle = DArray.first(reference.symbol.declarations ?? []);
+	const declarations: (TsAST.TypeAliasDeclaration | TsAST.InterfaceDeclaration)[] = [];
 
-	if (!handle || DString.includes(handle.path, "/node_modules/")) {
-		return DEither.none();
+	for (const handle of reference.symbol.declarations ?? []) {
+		if (DString.includes(handle.path, "/node_modules/")) {
+			return DEither.none();
+		}
+
+		const declaration = await handle.resolve();
+
+		if (declaration && (TsAST.isTypeAliasDeclaration(declaration) || TsAST.isInterfaceDeclaration(declaration))) {
+			declarations.push(declaration);
+		}
 	}
 
-	const declaration = await handle.resolve();
-
-	return declaration && TsAST.isTypeAliasDeclaration(declaration)
-		? DEither.some(declaration)
-		: DEither.none();
+	return DArray.lengthEqual(declarations, 0)
+		? DEither.none()
+		: DEither.some(declarations);
 }

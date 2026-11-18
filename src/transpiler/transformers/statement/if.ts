@@ -13,7 +13,7 @@ type IfStatementTransformResult = Awaited<
 	ReturnType<Transformer<GoAST.IfStatement>["transformer"]>
 >;
 
-async function transformBranchToBlock(
+export async function transformBranchToBlock(
 	node: TsAST.Statement,
 	context: BuildContext,
 ) {
