@@ -4,7 +4,7 @@ Version analysée : `@duplojs/lang@0.1.0-beta.11` (celle fixée dans `package.js
 Tous les extraits de sortie ci-dessous sont des copies brutes de ce qu'affiche `node` via `tsx`, sans retouche.
 Node exécuté : `./node_modules/.bin/tsx sandbox/<fichier>.ts` depuis la racine du dépôt.
 
-> `PLAN_HACKATHON.md` n'est pas versionné dans ce dépôt/cette branche (recherché avec `find . -iname "PLAN_HACKATHON*"`, aucun résultat, y compris dans l'historique git) ; son contenu a été fourni directement par l'utilisateur en cours de mission et est pris en compte ci-dessous (voir « Correspondance avec PLAN_HACKATHON.md » en fin de document). Cette fiche s'appuie par ailleurs sur `AGENTS.md`, les routeurs `API.llms.md` / `concepts.llms.md` de `@duplojs/agents-kit`, le code source de `@duplojs/lang` dans `node_modules/`, et les fichiers de `projects/01` à `projects/10`.
+> Le plan de l'équipe est versionné dans [`PLAN_HACKATHON.md`](PLAN_HACKATHON.md) depuis le Sprint 6 ; lors de la rédaction de cette fiche (Sprint 0), il ne l'était pas et son contenu a été fourni en cours de mission. Il est pris en compte ci-dessous (voir « Correspondance avec PLAN_HACKATHON.md » en fin de document). Cette fiche s'appuie par ailleurs sur `AGENTS.md`, les routeurs `API.llms.md` / `concepts.llms.md` de `@duplojs/agents-kit`, le code source de `@duplojs/lang` dans `node_modules/`, et les fichiers de `projects/01` à `projects/10`.
 
 ## Résumé exécutif (pour qui ne lit que ça)
 
@@ -531,7 +531,7 @@ Voir détail complet en **Q4** ci-dessus (signature, code source = coercition `$
 
 ## Correspondance avec `PLAN_HACKATHON.md` (sections 5 et 6)
 
-Le plan (fourni par l'utilisateur en cours de mission, non versionné dans ce dépôt — voir note en tête de ce document) liste explicitement plusieurs points « à vérifier » dans la sémantique DuploJS avant de trancher les ADR de la Personne 4 (ADR-1, Either) et de poser les bases du Sprint 5 (ADR-5, async). Voici leur statut après exécution :
+Le plan ([`PLAN_HACKATHON.md`](PLAN_HACKATHON.md), voir note en tête de ce document) liste explicitement plusieurs points « à vérifier » dans la sémantique DuploJS avant de trancher les ADR de la Personne 4 (ADR-1, Either) et de poser les bases du Sprint 5 (ADR-5, async). Voici leur statut après exécution :
 
 | Référence dans le plan | Question posée | Statut après cette fiche |
 |---|---|---|
