@@ -127,7 +127,7 @@ Résultat de `./scripts/check-all.sh` au 17/11/2026, sur `main` (commit `9e2995c
 - **01 à 09 :** le premier blocage est toujours `const …` (`FirstStatement` = `VariableStatement`), qui n'a pas encore de transformer.
 - **10 :** le blocage arrive plus tôt, sur un `TypeReference` **synthétique** (le texte `DisplayError` signifie que `getText()` a échoué). C'est probablement le type de retour `Promise<…>` de `async function calculate`, reconstruit par `typeToTypeNode` puisqu'il n'est pas annoté.
 - **Format de `DCommon.print` :** les références TS montrent le format de `util.inspect` de Node (clés entre apostrophes, indentation de 2 espaces, `[ '3', '3', 'échec' ]`). C'est ce format que le Go devra reproduire à l'identique.
-- **Le Go produit dépend de la machine :** les noms de packages encodent le chemin **absolu** du fichier source (`Sourced_001busers001belwardi001bdesktop…`). Deux membres de l'équipe n'obtiendront donc pas le même Go. À corriger pour pouvoir comparer les sorties entre machines.
+- **Le Go produit dépend de la machine :** les noms de packages encodaient alors le chemin **absolu** du fichier source, répertoire personnel compris. Deux membres de l'équipe n'obtenaient donc pas le même Go. Corrigé depuis (D8) : les packages portent le chemin relatif au projet (`Sourced_add.Sourced_add`).
 
 ## 7. Valider avec Docker (Windows, et tout autre poste)
 
