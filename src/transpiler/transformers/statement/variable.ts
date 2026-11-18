@@ -169,7 +169,11 @@ export const variableStatementTransformer: Transformer<GoAST.Statement> = create
 
 		const type = await context.transpilation.typeChecker.getTypeAtLocation(declaration.name);
 		const baseType = await context.transpilation.typeChecker.getBaseTypeOfLiteralType(type);
-		const typeNode = await context.transpilation.typeChecker.typeToTypeNode(baseType, declaration);
+		const typeNode = await context.transpilation.typeChecker.typeToTypeNode(
+			baseType,
+			declaration,
+			1 /* NoTruncation */,
+		);
 
 		if (!typeNode) {
 			return context.error(declaration.name, "unable-to-create-variable-type-node");
