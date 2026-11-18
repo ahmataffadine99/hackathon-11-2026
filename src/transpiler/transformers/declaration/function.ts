@@ -72,6 +72,7 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 		const returnTypeNode = node.type ?? await context.transpilation.typeChecker.typeToTypeNode(
 			await context.transpilation.typeChecker.getReturnTypeOfSignature(signature),
 			node,
+			1 /* NoTruncation */,
 		) ?? TsAST.factory.createKeywordTypeNode(TsAST.SyntaxKind.AnyKeyword);
 
 		const returnType = await DCommon.asyncPipe(

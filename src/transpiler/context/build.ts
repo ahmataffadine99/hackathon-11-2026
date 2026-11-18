@@ -74,6 +74,16 @@ export interface BuildContext {
 	registerDependencyFile(dependencyFile: DependencyFile): GoAST.Identifier;
 }
 
+// D21 : un nœud synthétique (produit par typeToTypeNode) n'a pas de fichier source,
+// et getText() lève une exception. Le diagnostic doit rester lisible, pas planter.
+function getNodeText(node: TsAST.Node) {
+	try {
+		return node.getText();
+	} catch {
+		return `<synthétique ${TsAST.SyntaxKind[node.kind]}>`;
+	}
+}
+
 export function createBuildContext(
 	transpilation: TranspilationContext,
 	file: FileContext,
@@ -85,7 +95,7 @@ export function createBuildContext(
 		error: (node, content) => DEither.left("transformation-error", {
 			kind: TsAST.SyntaxKind[node.kind],
 			parentKind: node.parent ? TsAST.SyntaxKind[node.parent.kind] : undefined,
-			text: node.getText(),
+			text: getNodeText(node),
 			getNode: () => node,
 			content,
 			filePath: file.currentFilePath,

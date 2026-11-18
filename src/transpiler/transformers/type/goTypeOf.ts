@@ -29,7 +29,7 @@ export async function goTypeOf(
 	site: TsAST.Node,
 	context: BuildContext,
 ): Promise<TransformationSuccess<GoType> | TransformationError | NotfoundTransformer> {
-	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, site);
+	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, site, 1 /* NoTruncation */);
 
 	if (!typeNode) {
 		return context.error(site, "unable-to-create-type-node");

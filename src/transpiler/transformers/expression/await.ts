@@ -1,5 +1,5 @@
 import * as DEither from "@duplojs/lang/either";
-import { GoAST } from "@go";
+import type { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { expressionTransformers } from ".";
