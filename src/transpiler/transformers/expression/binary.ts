@@ -33,7 +33,11 @@ const binaryOperators: Partial<
 	[TsAST.SyntaxKind.GreaterThanEqualsToken]: ">=",
 };
 
-export const binaryExpressionTransformer: Transformer<GoAST.BinaryExpression | GoAST.Identifier> = createTransformer(
+// `%` en JS : reste de la division FLOTTANTE, du signe du dividende, NaN pour un
+// diviseur nul. Go n'a pas de `%` sur float64 ; math.Mod a la même sémantique.
+const mathImportDeclaration = GoAST.createImportDeclaration({ path: "math" });
+
+export const binaryExpressionTransformer: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context) => {
 		if (!TsAST.isBinaryExpression(node)) {
 			return context.notSupport();
@@ -126,6 +130,26 @@ export const binaryExpressionTransformer: Transformer<GoAST.BinaryExpression | G
 			identifier: context.generateIdentifier(),
 			initializer: right.result,
 		});
+
+		if (operator === "%") {
+			context.file.imports.add(mathImportDeclaration);
+
+			return context.success({
+				before: DArray.concat(
+					left.before,
+					[leftAssignment],
+					right.before,
+					[rightAssignment],
+				),
+				result: GoAST.createCallExpression({
+					callee: GoAST.createSelectorExpression({
+						target: GoAST.createIdentifier("math"),
+						identifier: GoAST.createIdentifier("Mod"),
+					}),
+					arguments: [leftAssignment.identifier, rightAssignment.identifier],
+				}),
+			});
+		}
 
 		return context.success({
 			before: DArray.concat(

@@ -19,6 +19,22 @@ import {
 	isEitherNoValueGoType,
 } from "./goType";
 import {
+	createUnionValue,
+	findUnionMemberIndex,
+	convertUnion,
+	getUnionMemberGoTypes,
+	narrowUnionExpression,
+	renderGoType,
+} from "../../type/taggedUnion";
+import { goBuilder as go } from "../../type/goBuilder";
+import {
+	eitherConversionDependency,
+	either2FromEitherFunctionIdentifier,
+	either2MapFunctionIdentifier,
+	either2PlainOfFunctionIdentifier,
+	eitherMapFunctionIdentifier,
+} from "./conversionDependency";
+import {
 	either2FromLeftFunctionIdentifier,
 	eitherDependency,
 	eitherPlainFunctionIdentifier,
@@ -93,7 +109,7 @@ export interface CoerceGoExpressionParams {
  * (EitherPlainOf), Either[A] vers Either[B] si `from` n'a que des gauches sans
  * valeur (EitherRetype) ; sinon notSupport.
  */
-export async function coerceGoExpression(
+async function coerceGoExpressionLegacy(
 	params: CoerceGoExpressionParams,
 	context: BuildContext,
 ): Promise<
@@ -231,4 +247,307 @@ export async function coerceExpression(
 		},
 		context,
 	);
+}
+
+type CoerceResult = TransformationSuccess<GoAST.Expression> | TransformationNotSupported;
+
+/**
+ * Coercition d'après les TYPES GO. Les règles historiques (ADR-2, ADR-7) passent
+ * d'abord, et leur Go est inchangé ; les règles de l'ADR-13 ne servent que là où
+ * elles renvoyaient notSupport :
+ * - union étiquetée : membre vers union (`UnionN{Tag, Vi}`), union vers membre
+ *   rétréci par TypeScript (`x.Vi`), union vers union (conversion par étiquette) ;
+ * - Either[V] vers Either[W], Either[V] ou Either2 vers Either2[L, R], valeur nue
+ *   vers Either2 : chaque côté est converti récursivement. Un côté que le type TS
+ *   source rend impossible (pas de Success, ou seulement des gauches sans valeur)
+ *   reçoit une conversion vers la valeur zéro, jamais appelée sur une vraie valeur.
+ */
+export async function coerceGoExpression(
+	params: CoerceGoExpressionParams,
+	context: BuildContext,
+): Promise<CoerceResult> {
+	const legacy = await coerceGoExpressionLegacy(params, context);
+
+	if (!DEither.isLeft(legacy)) {
+		return legacy;
+	}
+
+	return coerceGoExpressionExtended(params, context);
+}
+
+async function coerceToUnion(
+	params: CoerceGoExpressionParams,
+	targetMembers: readonly GoType[],
+	context: BuildContext,
+): Promise<CoerceResult> {
+	const { expression, fromGoType, toGoType } = params;
+	const index = findUnionMemberIndex(targetMembers, fromGoType);
+
+	if (index >= 0) {
+		return context.success({ result: createUnionValue(toGoType, index, expression) });
+	}
+
+	const sourceMembers = DEither.unwrapRight(getUnionMemberGoTypes(fromGoType));
+
+	if (!DEither.isLeft(sourceMembers)) {
+		return convertUnion({
+			expression,
+			fromGoType,
+			toGoType,
+			sourceMembers,
+			targetMembers,
+			requireAll: true,
+		}, context);
+	}
+
+	// Membre convertible (ex. Either[float64] vers un membre Either2) : un seul candidat.
+	const candidates: {
+		index: number;
+		result: GoAST.Expression;
+	}[] = [];
+
+	for (const [memberIndex, member] of targetMembers.entries()) {
+		if (DEither.isLeft(getUnionMemberGoTypes(member)) && renderGoType(member) !== renderGoType(fromGoType)) {
+			const converted = await coerceGoExpression({
+				expression,
+				fromGoType,
+				toGoType: member,
+				from: params.from,
+			}, context);
+
+			if (!DEither.isLeft(converted)) {
+				candidates.push({
+					index: memberIndex,
+					result: DEither.unwrapRight(converted).result,
+				});
+			}
+		}
+	}
+
+	const candidate = candidates.length === 1 ? candidates[0] : undefined;
+
+	return candidate
+		? context.success({ result: createUnionValue(toGoType, candidate.index, candidate.result) })
+		: context.notSupport();
+}
+
+/** Fonction Go `func(p From) To` qui applique la coercition `From -> To`. */
+async function createConverter(
+	fromGoType: GoType,
+	toGoType: GoType,
+	possible: boolean,
+	context: BuildContext,
+): Promise<GoAST.Expression | undefined> {
+	const parameter = context.generateIdentifier();
+	const converted = await coerceGoExpression({
+		expression: parameter,
+		fromGoType,
+		toGoType,
+	}, context);
+
+	if (!DEither.isLeft(converted)) {
+		return go.functionLiteral(
+			[go.argument(parameter, fromGoType)],
+			toGoType,
+			[go.return(DEither.unwrapRight(converted).result)],
+		);
+	}
+
+	return possible
+		? undefined
+		: go.functionLiteral(
+			[go.argument(GoAST.createIdentifier("_"), fromGoType)],
+			toGoType,
+			[...go.zeroValueReturn(toGoType)],
+		);
+}
+
+async function getSidePossibilities(from: Type | undefined, context: BuildContext) {
+	if (!from) {
+		return {
+			right: true,
+			valuedLeft: true,
+		};
+	}
+
+	const names = await eitherVariantNames(from, context);
+
+	return {
+		right: DArray.some(names, (name) => name === undefined || name === "Success" || name === "Right"),
+		valuedLeft: DArray.some(names, (name) => name === "Left"),
+	};
+}
+
+async function coerceGoExpressionExtended(
+	params: CoerceGoExpressionParams,
+	context: BuildContext,
+): Promise<CoerceResult> {
+	const { expression, fromGoType, toGoType, from } = params;
+
+	const targetMembers = DEither.unwrapRight(getUnionMemberGoTypes(toGoType));
+
+	if (!DEither.isLeft(targetMembers)) {
+		return coerceToUnion(params, targetMembers, context);
+	}
+
+	const sourceMembers = DEither.unwrapRight(getUnionMemberGoTypes(fromGoType));
+
+	if (!DEither.isLeft(sourceMembers)) {
+		// Union rétrécie par TypeScript : membre (`x.Vi`) ou sous-union.
+		return narrowUnionExpression(expression, fromGoType, toGoType, context);
+	}
+
+	const toEither2 = DEither.unwrapRight(getEither2GoTypes(toGoType));
+	const fromEither2 = DEither.unwrapRight(getEither2GoTypes(fromGoType));
+	const fromValue = DEither.unwrapRight(getEitherValueGoType(fromGoType));
+	const possibilities = await getSidePossibilities(from, context);
+	const conversionPackage = () => context.registerSharedDependency(eitherConversionDependency.value);
+
+	if (!DEither.isLeft(toEither2)) {
+		if (!DEither.isLeft(fromEither2)) {
+			const left = await createConverter(
+				fromEither2.leftType,
+				toEither2.leftType,
+				possibilities.valuedLeft,
+				context,
+			);
+			const right = await createConverter(
+				fromEither2.rightType,
+				toEither2.rightType,
+				possibilities.right,
+				context,
+			);
+
+			return left && right
+				? context.success({
+					result: go.call(
+						go.instantiate(
+							go.select(conversionPackage(), either2MapFunctionIdentifier),
+							[toEither2.leftType, toEither2.rightType, fromEither2.leftType, fromEither2.rightType],
+						),
+						[expression, left, right],
+					),
+				})
+				: context.notSupport();
+		}
+
+		if (!DEither.isLeft(fromValue)) {
+			const left = await createConverter(fromValue, toEither2.leftType, possibilities.valuedLeft, context);
+			const right = await createConverter(fromValue, toEither2.rightType, possibilities.right, context);
+
+			return left && right
+				? context.success({
+					result: go.call(
+						go.instantiate(
+							go.select(conversionPackage(), either2FromEitherFunctionIdentifier),
+							[toEither2.leftType, toEither2.rightType, fromValue],
+						),
+						[expression, left, right],
+					),
+				})
+				: context.notSupport();
+		}
+
+		// Valeur nue vers Either2 : forme Plain, côté droit.
+		const plain = await coerceGoExpression({
+			expression,
+			fromGoType,
+			toGoType: toEither2.rightType,
+		}, context);
+
+		if (DEither.isLeft(plain)) {
+			return plain;
+		}
+
+		return context.success({
+			result: go.call(
+				go.instantiate(
+					go.select(conversionPackage(), either2PlainOfFunctionIdentifier),
+					[toEither2.leftType, toEither2.rightType],
+				),
+				[DEither.unwrapRight(plain).result],
+			),
+		});
+	}
+
+	const toValue = DEither.unwrapRight(getEitherValueGoType(toGoType));
+
+	if (DEither.isLeft(toValue)) {
+		return context.notSupport();
+	}
+
+	if (!DEither.isLeft(fromValue) && DEither.isLeft(fromEither2)) {
+		const convert = await createConverter(fromValue, toValue, true, context);
+
+		return convert
+			? context.success({
+				result: go.call(
+					go.instantiate(
+						go.select(conversionPackage(), eitherMapFunctionIdentifier),
+						[toValue, fromValue],
+					),
+					[expression, convert],
+				),
+			})
+			: context.notSupport();
+	}
+
+	if (DEither.isLeft(fromValue)) {
+		// Valeur nue convertible vers V (ex. V union étiquetée) : forme Plain.
+		const plain = await coerceGoExpression({
+			expression,
+			fromGoType,
+			toGoType: toValue,
+		}, context);
+
+		if (DEither.isLeft(plain)) {
+			return plain;
+		}
+
+		return context.success({
+			result: go.call(
+				go.instantiate(
+					go.select(context.registerSharedDependency(eitherDependency.value), eitherPlainFunctionIdentifier),
+					[toValue],
+				),
+				[DEither.unwrapRight(plain).result],
+			),
+		});
+	}
+
+	return context.notSupport();
+}
+
+/**
+ * Côté (gauche ou droite) de chaque `information` d'un type Either TS :
+ * `Left<"negative", string>` donne `negative -> left`, `Success<V>` donne
+ * `success -> right`. Sert à lire le bon champ d'un Either2 (ADR-13).
+ */
+export async function eitherInformationSides(type: Type, context: BuildContext) {
+	const sides = new Map<string, "left" | "right">([
+		["success", "right"],
+		["fail", "left"],
+	]);
+	const members = type.isUnionType() ? await type.getTypes() : [type];
+	const { typeChecker } = context.transpilation;
+
+	for (const member of members) {
+		const names = await eitherVariantNames(member, context);
+		const name = DArray.first(names);
+
+		if (name !== "Left" && name !== "Right") {
+			continue;
+		}
+
+		// L'API ne rend pas les arguments d'alias d'un type inféré : l'information
+		// est lue dans le texte du type (`Left<"negative", …>`), reconnu par symbole.
+		const text = await typeChecker.typeToString(member);
+		const literal = /^(?:[\w$]+\.)?(?:Left|Right)<"(?<value>(?:[^"\\]|\\.)*)"/.exec(text)?.groups?.value;
+
+		if (literal !== undefined && literal !== "") {
+			sides.set(literal, name === "Left" ? "left" : "right");
+		}
+	}
+
+	return sides;
 }

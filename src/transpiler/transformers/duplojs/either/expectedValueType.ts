@@ -44,6 +44,31 @@ export async function resolveExpectedEitherValueType(
 	node: TsAST.CallExpression,
 	context: BuildContext,
 ) {
+	const expected = DEither.unwrapRight(await resolveExpectedEitherGoType(node, context));
+
+	if (DEither.isLeft(expected)) {
+		return expected;
+	}
+
+	return DCommon.pipe(
+		getEitherValueGoType(expected),
+		DEither.unwrapRight,
+		(valueType) => (
+			DEither.isLeft(valueType)
+				? context.error(node, "unable-to-resolve-either-value-type")
+				: DEither.right("either-value-type", valueType)
+		),
+	);
+}
+
+/**
+ * Type Go COMPLET attendu pour un constructeur Either : Either[V] ou, depuis
+ * l'ADR-13, Either2[L, R] (gauches et droites de types différents).
+ */
+export async function resolveExpectedEitherGoType(
+	node: TsAST.CallExpression,
+	context: BuildContext,
+) {
 	const { typeChecker } = context.transpilation;
 
 	const candidates: readonly (() => Promise<Type | undefined>)[] = [
@@ -72,9 +97,9 @@ export async function resolveExpectedEitherValueType(
 					? goType
 					: DEither.unwrapRight(getEitherValueGoType(goType.result));
 
-				return DEither.isLeft(eitherValueType)
+				return DEither.isLeft(eitherValueType) || DEither.isLeft(goType)
 					? next(undefined)
-					: exit(eitherValueType);
+					: exit(goType.result);
 			},
 		),
 	);
@@ -83,5 +108,5 @@ export async function resolveExpectedEitherValueType(
 		return context.error(node, "unable-to-resolve-either-value-type");
 	}
 
-	return DEither.right("either-value-type", valueType);
+	return DEither.right("either-go-type", valueType);
 }

@@ -6,6 +6,7 @@ import { TsAST } from "@typescript";
 import type { GoType } from "../type/goTypeOf";
 import type { BuildContext } from "../../context/build";
 import type { NotfoundTransformer, TransformationError } from "@transformer";
+import { isTopLevelDeclarationName } from "../../resolvedReference";
 
 function collectIdentifiers(root: TsAST.Node) {
 	const identifiers: TsAST.Identifier[] = [];
@@ -115,7 +116,9 @@ export async function bindArrayPattern(params: {
 		}
 
 		statements.push(GoAST.createShortVariableDeclarationStatement({
-			identifier: context.createSourceIdentifier(bindingName.text),
+			identifier: isTopLevelDeclarationName(bindingName)
+				? context.createTopLevelIdentifier(context.file.currentFilePath, bindingName.text)
+				: context.createSourceIdentifier(bindingName.text),
 			initializer: GoAST.createIndexExpression({
 				target: source,
 				index: GoAST.createIntegerLiteral({ value: BigInt(index) }),

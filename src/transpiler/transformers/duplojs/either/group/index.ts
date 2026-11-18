@@ -14,8 +14,8 @@ import {
 	eitherDependency,
 	eitherSuccessFunctionIdentifier,
 } from "../sharedDependency";
-import { getEither2GoTypes, getEitherValueAccess, getEitherValueGoType } from "../goType";
-import { eitherVariantNames } from "../coerce";
+import { createEither2GoType, getEither2GoTypes, getEitherValueAccess, getEitherValueGoType } from "../goType";
+import { coerceGoExpression, eitherVariantNames } from "../coerce";
 
 const makeIdentifier = GoAST.createIdentifier("make");
 const lenIdentifier = GoAST.createIdentifier("len");
@@ -135,16 +135,27 @@ export async function groupExpressionHandler(
 		return context.error(arrayNode, "duplojs-either-group-elements-are-not-eithers");
 	}
 
-	if (
-		resultTypes.leftType
-		&& GoPrinter.renderNode(valueAccess.valueType) !== GoPrinter.renderNode(resultTypes.leftType)
-	) {
-		return context.error(node, "duplojs-either-group-left-type-mismatch");
-	}
-
 	if (!DModeling.hasTagValue(resultTypes.rightType, "[node][type]slice")) {
 		return context.error(node, "duplojs-either-group-right-type-is-not-a-slice");
 	}
+
+	// ADR-13 : élément Either2[EL, ER] (ou Either[V]) dont les côtés diffèrent du
+	// résultat Either2[L, []R] : chaque côté est converti (membre vers union…).
+	const elementEither2 = DEither.unwrapRight(getEither2GoTypes(elementType));
+	const elementLeft = DEither.isLeft(elementEither2)
+		? {
+			field: GoAST.createIdentifier("Value"),
+			goType: valueAccess.valueType,
+		}
+		: {
+			field: GoAST.createIdentifier("Left"),
+			goType: elementEither2.leftType,
+		};
+	const leftMatches = !resultTypes.leftType
+		|| (
+			DEither.isLeft(elementEither2)
+			&& GoPrinter.renderNode(valueAccess.valueType) === GoPrinter.renderNode(resultTypes.leftType)
+		);
 
 	const packageName = context.registerSharedDependency(eitherDependency.value);
 	const arrayIdentifier = context.generateIdentifier();
@@ -158,16 +169,68 @@ export async function groupExpressionHandler(
 	});
 
 	const { leftType } = resultTypes;
-	const leftConstructor = leftType && GoAST.createCallExpression({
-		callee: GoAST.createInstantiationExpression({
-			target: GoAST.createSelectorExpression({
-				target: packageName,
-				identifier: either2FromLeftFunctionIdentifier,
+	const convertedLeft = leftType && !leftMatches
+		? await coerceGoExpression({
+			expression: GoAST.createSelectorExpression({
+				target: valueIdentifier,
+				identifier: elementLeft.field,
 			}),
-			typeArguments: DCommon.cast([leftType, resultTypes.rightType]),
+			fromGoType: elementLeft.goType,
+			toGoType: leftType,
+		}, context)
+		: undefined;
+
+	if (convertedLeft && DEither.isLeft(convertedLeft)) {
+		return context.error(node, "duplojs-either-group-left-type-mismatch");
+	}
+
+	const convertedRight = await coerceGoExpression({
+		expression: GoAST.createSelectorExpression({
+			target: valueIdentifier,
+			identifier: valueAccess.field,
 		}),
-		arguments: [valueIdentifier],
-	});
+		fromGoType: valueAccess.valueType,
+		toGoType: resultTypes.rightType.elementType,
+	}, context);
+
+	if (DEither.isLeft(convertedRight)) {
+		return context.error(node, "duplojs-either-group-right-type-mismatch");
+	}
+
+	const leftConstructor = convertedLeft && leftType
+		? GoAST.createStructLiteral({
+			typeReference: DCommon.cast(createEither2GoType(packageName, leftType, resultTypes.rightType)),
+			elements: [
+				GoAST.createKeyedElement({
+					key: GoAST.createIdentifier("Kind"),
+					value: GoAST.createSelectorExpression({
+						target: valueIdentifier,
+						identifier: GoAST.createIdentifier("Kind"),
+					}),
+				}),
+				GoAST.createKeyedElement({
+					key: GoAST.createIdentifier("Information"),
+					value: GoAST.createSelectorExpression({
+						target: valueIdentifier,
+						identifier: GoAST.createIdentifier("Information"),
+					}),
+				}),
+				GoAST.createKeyedElement({
+					key: GoAST.createIdentifier("Left"),
+					value: DEither.unwrapRight(convertedLeft).result,
+				}),
+			],
+		})
+		: leftType && GoAST.createCallExpression({
+			callee: GoAST.createInstantiationExpression({
+				target: GoAST.createSelectorExpression({
+					target: packageName,
+					identifier: either2FromLeftFunctionIdentifier,
+				}),
+				typeArguments: DCommon.cast([leftType, resultTypes.rightType]),
+			}),
+			arguments: [valueIdentifier],
+		});
 	const successConstructor = GoAST.createCallExpression({
 		callee: GoAST.createInstantiationExpression({
 			target: GoAST.createSelectorExpression({
@@ -268,10 +331,7 @@ export async function groupExpressionHandler(
 									callee: appendIdentifier,
 									arguments: DCommon.cast([
 										outputIdentifier,
-										GoAST.createSelectorExpression({
-											target: valueIdentifier,
-											identifier: valueAccess.field,
-										}),
+										DEither.unwrapRight(convertedRight).result,
 									]),
 								}),
 							]),

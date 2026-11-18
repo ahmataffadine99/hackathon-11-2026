@@ -15,6 +15,13 @@ import { globalIdentifierTransformer } from "./globals";
 import { conditionalExpressionTransformer } from "./conditional";
 import { templateExpressionTransformer } from "./template";
 import { awaitExpressionTransformer } from "./await";
+import {
+	nullishCoalescingTransformer,
+	nullLiteralTransformer,
+	typeOfComparisonTransformer,
+	typeOfExpressionTransformer,
+	unionEqualityTransformer,
+} from "./union";
 
 export const expressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
@@ -28,6 +35,11 @@ export const expressionTransformers = DCommon.memo(
 		booleanLiteralTransformer,
 		arrayLiteralTransformer,
 		prefixUnaryExpressionTransformer,
+		nullLiteralTransformer,
+		typeOfComparisonTransformer,
+		typeOfExpressionTransformer,
+		nullishCoalescingTransformer,
+		unionEqualityTransformer,
 		binaryExpressionTransformer,
 		arrowFunctionTransformer,
 		conditionalExpressionTransformer,

@@ -1,5 +1,5 @@
 import { type Transformer } from "@transformer";
-import { GoAST } from "@go";
+import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
@@ -8,6 +8,7 @@ import { type BuildContext } from "../../../../context/build";
 import { transformCallExpression } from "../../../shared";
 import { eitherDependency, eitherLeftFunctionIdentifier } from "../sharedDependency";
 import { resolveExpectedEitherValueType } from "../expectedValueType";
+import { createEitherConstructorCall } from "../constructor";
 
 // DEither.left(information, value) : EitherLeftOf[V](information, value), V tiré
 // du TYPE ATTENDU (union englobante, retour de fonction même inféré), comme fail()
@@ -26,26 +27,5 @@ export async function leftExpressionHandler(
 		return context.error(node, "duplojs-either-left-two-arguments-only");
 	}
 
-	const valueType = await DCommon.asyncPipe(
-		resolveExpectedEitherValueType(node, context),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(valueType)) {
-		return valueType;
-	}
-
-	const packageName = context.registerSharedDependency(eitherDependency.value);
-
-	return transformCallExpression(
-		node,
-		context,
-		GoAST.createInstantiationExpression({
-			target: GoAST.createSelectorExpression({
-				target: packageName,
-				identifier: eitherLeftFunctionIdentifier,
-			}),
-			typeArguments: DCommon.cast([valueType]),
-		}),
-	);
+	return createEitherConstructorCall(node, "left", context);
 }

@@ -875,6 +875,87 @@ export const inspectSharedDependency = DCommon.memo(() => {
 		],
 	});
 
+	// ADR-13 : tout autre tableau ([]bool, [][]float64, slice d'Either ou d'unions…)
+	// est parcouru par réflexion. Ce chemin ne sert qu'à l'affichage : les cas
+	// []float64 et []string, plus fréquents, restent directs.
+	const reflectedIdentifier = GoAST.createIdentifier("reflected");
+	const indexIdentifier = GoAST.createIdentifier("index");
+	const reflectIdentifier = GoAST.createIdentifier("reflect");
+	const reflectedKindIs = (kind: string) => GoAST.createBinaryExpression({
+		operator: "==",
+		left: call(GoAST.createSelectorExpression({
+			target: reflectedIdentifier,
+			identifier: GoAST.createIdentifier("Kind"),
+		}), []),
+		right: GoAST.createSelectorExpression({
+			target: reflectIdentifier,
+			identifier: GoAST.createIdentifier(kind),
+		}),
+	});
+	const reflectedSliceStatements = [
+		GoAST.createShortVariableDeclarationStatement({
+			identifier: reflectedIdentifier,
+			initializer: packageCall(reflectIdentifier, "ValueOf", [valueParam]),
+		}),
+		GoAST.createIfStatement({
+			condition: GoAST.createBinaryExpression({
+				operator: "||",
+				left: reflectedKindIs("Slice"),
+				right: reflectedKindIs("Array"),
+			}),
+			body: GoAST.createBlockStatement({
+				statements: [
+					GoAST.createShortVariableDeclarationStatement({
+						identifier: partsVariable,
+						initializer: GoAST.createSliceLiteral({
+							typeReference: sliceOfString,
+							elements: [],
+						}),
+					}),
+					GoAST.createRangeStatement({
+						binding: GoAST.createRangeDeclaration({ key: indexIdentifier }),
+						expression: call(GoAST.createSelectorExpression({
+							target: reflectedIdentifier,
+							identifier: GoAST.createIdentifier("Len"),
+						}), []),
+						body: GoAST.createBlockStatement({
+							statements: [
+								GoAST.createAssignmentStatement({
+									targets: DCommon.cast([partsVariable]),
+									values: DCommon.cast([
+										call(GoAST.createIdentifier("append"), [
+											partsVariable,
+											call(inspectValueIdentifier, [
+												call(GoAST.createSelectorExpression({
+													target: call(GoAST.createSelectorExpression({
+														target: reflectedIdentifier,
+														identifier: GoAST.createIdentifier("Index"),
+													}), [indexIdentifier]),
+													identifier: GoAST.createIdentifier("Interface"),
+												}), []),
+												plus(depthParam, GoAST.createIntegerLiteral({ value: 1n })),
+											]),
+										]),
+									]),
+								}),
+							],
+						}),
+					}),
+					GoAST.createReturnStatement({
+						values: [
+							call(inspectReduceToSingleStringIdentifier, [
+								partsVariable,
+								GoAST.createStringLiteral({ value: "[" }),
+								GoAST.createStringLiteral({ value: "]" }),
+								depthParam,
+							]),
+						],
+					}),
+				],
+			}),
+		}),
+	];
+
 	const inspectValueDeclaration = GoAST.createFunctionDeclaration({
 		identifier: inspectValueIdentifier,
 		generic: [],
@@ -956,7 +1037,10 @@ export const inspectSharedDependency = DCommon.memo(() => {
 						sliceInspectCase(sliceOfString),
 					],
 					defaultCase: GoAST.createDefaultCase({
-						statements: [call(GoAST.createIdentifier("panic"), [GoAST.createStringLiteral({ value: "shard_dependencies: unsupported value passed to Print" })])],
+						statements: [
+							...reflectedSliceStatements,
+							unsupportedValuePanic,
+						],
 					}),
 					casesAfterDefault: [],
 				}),
@@ -983,6 +1067,59 @@ export const inspectSharedDependency = DCommon.memo(() => {
 						GoAST.createTypeSwitchCase({
 							types: DCommon.cast([GoAST.builtinTypeReferences.string]),
 							statements: [GoAST.createReturnStatement({ values: [textBinding] })],
+						}),
+						// ADR-13 : valeur nue d'une union (étiquetée ou Either Plain) affichée
+						// au premier niveau comme la valeur elle-même (chaîne sans guillemets).
+						GoAST.createTypeSwitchCase({
+							types: DCommon.cast([
+								GoAST.createInterfaceType({
+									elements: [
+										GoAST.createInterfaceMethod({
+											identifier: GoAST.createIdentifier("InspectPlain"),
+											arguments: [],
+											returnTypes: [
+												GoAST.builtinTypeReferences.any,
+												GoAST.builtinTypeReferences.bool,
+											],
+										}),
+									],
+								}),
+							]),
+							statements: [
+								GoAST.createVariableDeclarationZeroValue({
+									identifier: plainValueVariable,
+									typeReference: GoAST.builtinTypeReferences.any,
+								}),
+								GoAST.createVariableDeclarationZeroValue({
+									identifier: isPlainVariable,
+									typeReference: GoAST.builtinTypeReferences.bool,
+								}),
+								GoAST.createAssignmentStatement({
+									targets: DCommon.cast([plainValueVariable, isPlainVariable]),
+									values: DCommon.cast([
+										call(
+											GoAST.createSelectorExpression({
+												target: textBinding,
+												identifier: GoAST.createIdentifier("InspectPlain"),
+											}),
+											[],
+										),
+									]),
+								}),
+								GoAST.createIfStatement({
+									condition: isPlainVariable,
+									body: GoAST.createBlockStatement({
+										statements: returnCallStatements(
+											inspectTopLevelIdentifier,
+											[plainValueVariable],
+										),
+									}),
+								}),
+								...returnCallStatements(
+									inspectValueIdentifier,
+									[valueParam, GoAST.createIntegerLiteral({ value: 0n })],
+								),
+							],
 						}),
 					],
 					defaultCase: GoAST.createDefaultCase({
@@ -1024,6 +1161,7 @@ export const inspectSharedDependency = DCommon.memo(() => {
 		imports: [
 			GoAST.createImportDeclaration({ path: "fmt" }),
 			GoAST.createImportDeclaration({ path: "math" }),
+			GoAST.createImportDeclaration({ path: "reflect" }),
 			GoAST.createImportDeclaration({ path: "strconv" }),
 			GoAST.createImportDeclaration({ path: "strings" }),
 		],

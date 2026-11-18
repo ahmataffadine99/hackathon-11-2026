@@ -6,6 +6,7 @@ import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
 import * as DGenerator from "@duplojs/lang/generator";
 import { statementTransformers } from ".";
+import { isTypeOnlyStatement } from "../../typeOnlyStatement";
 
 export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = createTransformer(
 	async(node, context) => {
@@ -18,6 +19,10 @@ export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = crea
 			DGenerator.asyncReduce(
 				DGenerator.reduceFrom<readonly GoAST.Statement[]>([]),
 				async({ item, lastValue, next, exit }) => {
+					if (isTypeOnlyStatement(item)) {
+						return next(lastValue);
+					}
+
 					const statement = await DCommon.asyncPipe(
 						context.transform(item, statementTransformers.value),
 						DEither.unwrapRight,

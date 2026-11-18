@@ -348,6 +348,24 @@ export const eitherDependency = DCommon.memo(() => {
 			returnTypes: [GoAST.builtinTypeReferences.any, GoAST.builtinTypeReferences.bool],
 			body: GoAST.createBlockStatement({
 				statements: [
+					// ADR-13 : valeur nue rangée dans Either2 (Either2PlainOf), côté droit.
+					GoAST.createIfStatement({
+						condition: GoAST.createBinaryExpression({
+							operator: "==",
+							left: either2ReceiverField(either2Fields.kind),
+							right: eitherKindIdentifiers.plain,
+						}),
+						body: GoAST.createBlockStatement({
+							statements: [
+								GoAST.createReturnStatement({
+									values: [
+										either2ReceiverField(either2Fields.right),
+										GoAST.createBooleanLiteral({ value: true }),
+									],
+								}),
+							],
+						}),
+					}),
 					GoAST.createReturnStatement({
 						values: [
 							GoAST.createNilLiteral({}),

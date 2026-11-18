@@ -18,7 +18,7 @@ import {
 	type CallbackApplicationResult,
 	type TypedExpression,
 } from "../../application";
-import { coerceGoExpression } from "../coerce";
+import { coerceGoExpression, eitherInformationSides } from "../coerce";
 import {
 	getEither2GoTypes,
 	getEitherValueAccess,
@@ -90,8 +90,14 @@ async function buildSwitch(params: {
 }): Promise<CallbackApplicationResult> {
 	const { input, cases, site, context } = params;
 
-	if (!DEither.isLeft(getEither2GoTypes(input.goType))) {
-		return context.error(site, "duplojs-either-matchinformation-either2-not-supported");
+	const either2 = DEither.unwrapRight(getEither2GoTypes(input.goType));
+	// ADR-13 : Either2 : chaque information lit son côté (Left ou Right).
+	const sides = DEither.isLeft(either2) || !input.type
+		? undefined
+		: await eitherInformationSides(input.type, context);
+
+	if (!DEither.isLeft(either2) && !sides) {
+		return context.error(site, "duplojs-either-matchinformation-either2-without-type");
 	}
 
 	const valueAccess = DEither.unwrapRight(getEitherValueAccess(input.goType));
@@ -100,19 +106,43 @@ async function buildSwitch(params: {
 		return context.error(site, "duplojs-either-matchinformation-input-is-not-an-either");
 	}
 
+	const caseValueAccess = (information: string) => {
+		const side = sides?.get(information);
+
+		if (DEither.isLeft(either2) || !side) {
+			return sides ? undefined : valueAccess;
+		}
+
+		return side === "left"
+			? {
+				field: GoAST.createIdentifier("Left"),
+				valueType: either2.leftType,
+			}
+			: {
+				field: GoAST.createIdentifier("Right"),
+				valueType: either2.rightType,
+			};
+	};
+
 	const applications = await DCommon.asyncPipe(
 		cases,
 		DGenerator.asyncReduce(
 			DGenerator.reduceFrom<readonly CallbackApplication[]>([]),
 			async({ item, lastValue, next, exit }) => {
+				const access = caseValueAccess(item.information);
+
+				if (!access) {
+					return exit(context.error(site, "duplojs-either-matchinformation-unknown-information-side"));
+				}
+
 				const application = DEither.unwrapRight(
 					await item.handler.apply([
 						{
 							expression: GoAST.createSelectorExpression({
 								target: input.expression,
-								identifier: valueAccess.field,
+								identifier: access.field,
 							}),
-							goType: valueAccess.valueType,
+							goType: access.valueType,
 						},
 					]),
 				);
@@ -260,6 +290,7 @@ async function directHandler(
 			input: {
 				expression: inputBinding.identifier,
 				goType: inputGoType.result,
+				type: await context.transpilation.typeChecker.getTypeAtLocation(inputNode),
 			},
 			cases,
 			resultGoType: DEither.isLeft(resultGoType) ? undefined : resultGoType.result,

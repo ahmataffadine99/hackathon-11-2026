@@ -16,20 +16,24 @@ import {
 	getEitherValueGoType,
 	isEitherNoValueGoType,
 } from "../duplojs/either/goType";
+import { createUnionGoType } from "./taggedUnion";
 
+// T2 : chaque membre est rendu UNE fois (Set des rendus), au lieu d'une
+// comparaison deux à deux qui rendait les types à chaque paire.
 function distinctByRender(goTypes: readonly GoType[]) {
-	return DArray.reduce(
-		goTypes,
-		DArray.reduceFrom<readonly GoType[]>([]),
-		({ element, lastValue, next }) => next(
-			DArray.some(
-				lastValue,
-				(known) => GoPrinter.renderNode(known) === GoPrinter.renderNode(element),
-			)
-				? lastValue
-				: DArray.push(lastValue, element),
-		),
-	);
+	const seen = new Set<string>();
+
+	return DArray.filter(goTypes, (goType) => {
+		const render = GoPrinter.renderNode(goType);
+
+		if (seen.has(render)) {
+			return false;
+		}
+
+		seen.add(render);
+
+		return true;
+	});
 }
 
 /**
@@ -39,7 +43,8 @@ function distinctByRender(goTypes: readonly GoType[]) {
  * - des variantes Either (de valeur V, ou sans valeur comme Fail) et des membres
  *   nus de type V : Either[V] (ex. `Fail | readonly [number]` : Either[[]float64]),
  *   les membres nus étant portés par la forme Plain ;
- * - sinon : notSupport (replis A' / union fermée de l'ADR-1 non implémentés).
+ * - plusieurs types Go (membres nus, gauches ou droites) : union étiquetée
+ *   UnionN (ADR-13), et Either2[gauches, droites] quand les deux côtés diffèrent.
  */
 export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 	async(node, context) => {
@@ -113,12 +118,11 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 			(memberType) => DEither.isLeft(getEitherValueGoType(memberType.goType)),
 		);
 
-		// Union sans Either : tous les membres doivent avoir le même type Go.
+		// Union sans Either : un seul type Go (ADR-2), sinon union étiquetée (ADR-13).
 		if (DArray.lengthEqual(eitherValueTypes, 0)) {
-			const distinctPlainTypes = distinctByRender(DArray.map(plainTypes, ({ goType }) => goType));
-			const plainType = DArray.first(distinctPlainTypes);
+			const plainType = createUnionGoType(DArray.map(plainTypes, ({ goType }) => goType), context);
 
-			if (!plainType || DArray.length(distinctPlainTypes) > 1) {
+			if (!plainType) {
 				return context.notSupport();
 			}
 
@@ -129,14 +133,11 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 		const leftTypes: GoType[] = [];
 		const rightTypes: GoType[] = [];
 		const unclassifiedEitherTypes: GoType[] = [];
-		let hasEither2 = false;
 
 		for (const member of memberTypes) {
 			const either2Types = DEither.unwrapRight(getEither2GoTypes(member.goType));
 
 			if (!DEither.isLeft(either2Types)) {
-				hasEither2 = true;
-
 				if (member.variantName === "Left" || member.variantName === "Fail") {
 					if (!isEitherNoValueGoType(either2Types.leftType)) {
 						leftTypes.push(either2Types.leftType);
@@ -193,8 +194,34 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 			});
 		}
 
-		if (distinctLeftTypes.length > 1 || distinctRightTypes.length > 1) {
-			return context.notSupport();
+		const plainJoinsRight = distinctPlainTypes.length === 0
+			|| (distinctRightTypes.length === 0 && distinctPlainTypes.length === 1)
+			|| (
+				distinctRightTypes.length === 1
+				&& distinctPlainTypes.length === 1
+				&& GoPrinter.renderNode(distinctRightTypes[0]!) === GoPrinter.renderNode(distinctPlainTypes[0]!)
+			);
+
+		// ADR-13 : plusieurs types de gauche, de droite, ou valeurs nues d'un autre
+		// type que la droite : chaque côté devient une union étiquetée.
+		if (distinctLeftTypes.length > 1 || distinctRightTypes.length > 1 || !plainJoinsRight) {
+			const unionLeftType = createUnionGoType(distinctLeftTypes, context);
+			const unionRightType = createUnionGoType([...distinctRightTypes, ...distinctPlainTypes], context);
+
+			if (!unionLeftType || !unionRightType) {
+				return context.success({
+					result: createEitherGoType(
+						packageName,
+						unionLeftType ?? unionRightType ?? createEitherNoValueGoType(packageName),
+					),
+				});
+			}
+
+			return context.success({
+				result: GoPrinter.renderNode(unionLeftType) === GoPrinter.renderNode(unionRightType)
+					? createEitherGoType(packageName, unionLeftType)
+					: createEither2GoType(packageName, unionLeftType, unionRightType),
+			});
 		}
 
 		const leftType = DArray.first(distinctLeftTypes);
@@ -214,10 +241,6 @@ export const unionTypeTransformer: Transformer<GoType> = createTransformer(
 
 		if (GoPrinter.renderNode(leftType) === GoPrinter.renderNode(rightType)) {
 			return context.success({ result: createEitherGoType(packageName, leftType) });
-		}
-
-		if (hasEither2) {
-			return context.notSupport();
 		}
 
 		return context.success({

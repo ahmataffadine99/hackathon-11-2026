@@ -7,7 +7,36 @@ import { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { createTransformer, type Transformer } from "@transformer";
 import { expressionTransformers } from ".";
-import { goTypeOf } from "../type/goTypeOf";
+import { goTypeOf, goTypeOfExpression, type GoType } from "../type/goTypeOf";
+import { type BuildContext } from "../../context/build";
+import { coerceGoExpression } from "../duplojs/either/coerce";
+import { isExpectedTypeEitherConstructor } from "../duplojs/either/constructor";
+
+/**
+ * ADR-13 : élément converti vers le type des éléments du slice (`[1, "a"]` dans
+ * un `(string | number)[]`). Sans conversion possible : inchangé.
+ */
+async function coerceElement(
+	item: TsAST.Expression,
+	expression: GoAST.Expression,
+	elementGoType: GoType,
+	context: BuildContext,
+) {
+	const itemGoType = DEither.unwrapRight(await goTypeOfExpression(item, context));
+
+	if (DEither.isLeft(itemGoType) || await isExpectedTypeEitherConstructor(item, context)) {
+		return expression;
+	}
+
+	const coerced = await coerceGoExpression({
+		expression,
+		fromGoType: itemGoType.result,
+		toGoType: elementGoType,
+		from: await context.transpilation.typeChecker.getTypeAtLocation(item),
+	}, context);
+
+	return DEither.isLeft(coerced) ? expression : DEither.unwrapRight(coerced).result;
+}
 
 export const arrayLiteralTransformer: Transformer<GoAST.SliceLiteral> = createTransformer(
 	async(node, context) => {
@@ -44,6 +73,7 @@ export const arrayLiteralTransformer: Transformer<GoAST.SliceLiteral> = createTr
 			});
 		}
 
+		const sliceElementType = type.result.elementType;
 		const elements = await DCommon.asyncPipe(
 			node.elements,
 			DGenerator.asyncReduce(
@@ -75,7 +105,10 @@ export const arrayLiteralTransformer: Transformer<GoAST.SliceLiteral> = createTr
 							element.before,
 							[assignment],
 						),
-						elements: DArray.push(lastValue.elements, assignment.identifier),
+						elements: DArray.push(
+							lastValue.elements,
+							await coerceElement(item, assignment.identifier, sliceElementType, context),
+						),
 					});
 				},
 			),

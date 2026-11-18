@@ -1,5 +1,5 @@
 import { type Transformer } from "@transformer";
-import { GoAST } from "@go";
+import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
@@ -7,6 +7,7 @@ import { type BuildContext } from "../../../../context/build";
 import { transformCallExpression } from "../../../shared";
 import { eitherDependency, eitherFailFunctionIdentifier } from "../sharedDependency";
 import { resolveExpectedEitherValueType } from "../expectedValueType";
+import { createEitherConstructorCall } from "../constructor";
 
 export async function failExpressionHandler(
 	node: TsAST.Node,
@@ -17,28 +18,6 @@ export async function failExpressionHandler(
 		return context.notSupport();
 	}
 
-	// fail() n'a pas d'argument : V ne peut venir que du type attendu
-	// (ex. Either[float64] pour un retour Success<number> | Fail).
-	const valueType = await DCommon.asyncPipe(
-		resolveExpectedEitherValueType(node, context),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(valueType)) {
-		return valueType;
-	}
-
-	const packageName = context.registerSharedDependency(eitherDependency.value);
-
-	return transformCallExpression(
-		node,
-		context,
-		GoAST.createInstantiationExpression({
-			target: GoAST.createSelectorExpression({
-				target: packageName,
-				identifier: eitherFailFunctionIdentifier,
-			}),
-			typeArguments: DCommon.cast([valueType]),
-		}),
-	);
+	// fail() n'a pas d'argument : le type vient du type attendu (C11, ADR-13).
+	return createEitherConstructorCall(node, "fail", context);
 }

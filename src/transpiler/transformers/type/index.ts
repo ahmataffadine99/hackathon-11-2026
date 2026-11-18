@@ -15,6 +15,8 @@ import { booleanTypeTransformer } from "./boolean";
 import { arrayTypeTransformer } from "./array";
 import { homogeneousTupleTypeTransformer } from "./tuple";
 import { readonlyTypeTransformer } from "./readonly";
+import { nullishTypeTransformer } from "./nullish";
+import { typeAliasReferenceTransformer } from "./typeAlias";
 
 export * from "./goTypeOf";
 
@@ -34,5 +36,7 @@ export const typeTransformers = DCommon.memo(
 		arrayTypeTransformer,
 		homogeneousTupleTypeTransformer,
 		functionTypeTransformer,
+		nullishTypeTransformer,
+		typeAliasReferenceTransformer,
 	],
 );
